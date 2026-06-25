@@ -1,0 +1,36 @@
+:root {
+    --legalops-navy: #172a46;
+    --legalops-gold: #b48a3c;
+}
+
+.legalops-brand-mark {
+    align-items: center;
+    background: var(--legalops-gold);
+    border-radius: 0.65rem;
+    color: #fff;
+    display: inline-flex;
+    font-weight: 700;
+    height: 2rem;
+    justify-content: center;
+    width: 2rem;
+}
+
+.app-sidebar {
+    --lte-sidebar-bg: var(--legalops-navy);
+}
+
+.health-hero {
+    background: linear-gradient(135deg, #172a46, #234a72);
+    border: 0;
+    color: #fff;
+}
+
+.health-dot {
+    background: #28a745;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0.35rem rgb(40 167 69 / 18%);
+    display: inline-block;
+    height: 0.75rem;
+    width: 0.75rem;
+}
+

@@ -1,0 +1,136 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Repositories;
+
+use PDO;
+
+final class CasoRepository extends BaseRepository
+{
+    /** @param array<string, mixed> $filters @return array{items: list<array<string, mixed>>, total: int} */
+    public function paginate(int $firmaId, array $filters, int $page = 1, int $perPage = 25): array
+    {
+        $where = ['c.firma_id=:firma_id', 'c.deleted_at IS NULL'];
+        $params = ['firma_id' => $firmaId];
+        if (($filters['estado'] ?? '') !== '') {
+            $where[] = 'c.estado=:estado';
+            $params['estado'] = $filters['estado'];
+        }
+        if (($filters['cliente_id'] ?? 0) > 0) {
+            $where[] = 'c.cliente_id=:cliente_id';
+            $params['cliente_id'] = $filters['cliente_id'];
+        }
+        if (($filters['q'] ?? '') !== '') {
+            $where[] = '(c.titulo_normalizado LIKE :q OR c.radicado LIKE :radicado)';
+            $params['q'] = '%' . $filters['q'] . '%';
+            $params['radicado'] = '%' . $filters['q'] . '%';
+        }
+
+        $sqlWhere = ' WHERE ' . implode(' AND ', $where);
+        $count = $this->pdo->prepare('SELECT COUNT(*) FROM casos c' . $sqlWhere);
+        $count->execute($params);
+
+        $offset = max(0, ($page - 1) * $perPage);
+        $query = $this->pdo->prepare(
+            'SELECT c.id,c.firma_id,c.cliente_id,c.responsable_usuario_id,c.titulo,c.estado,c.prioridad,
+                    c.tipo_proceso,c.jurisdiccion,c.despacho,c.radicado,c.fecha_apertura,c.closed_at,c.created_at,
+                    cl.nombre_razon_social AS cliente_nombre, u.nombre AS responsable_nombre
+             FROM casos c
+             INNER JOIN clientes cl ON cl.id=c.cliente_id AND cl.firma_id=c.firma_id
+             LEFT JOIN usuarios u ON u.id=c.responsable_usuario_id AND u.firma_id=c.firma_id' . $sqlWhere . '
+             ORDER BY FIELD(c.estado, \'activo\',\'cerrado\',\'archivado\'), c.updated_at DESC, c.id DESC
+             LIMIT :limit OFFSET :offset'
+        );
+        foreach ($params as $key => $value) {
+            $query->bindValue(':' . $key, $value);
+        }
+        $query->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $query->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $query->execute();
+
+        return ['items' => $query->fetchAll(), 'total' => (int) $count->fetchColumn()];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findForFirma(int $firmaId, int $id): ?array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT c.*, cl.nombre_razon_social AS cliente_nombre, u.nombre AS responsable_nombre
+             FROM casos c
+             INNER JOIN clientes cl ON cl.id=c.cliente_id AND cl.firma_id=c.firma_id
+             LEFT JOIN usuarios u ON u.id=c.responsable_usuario_id AND u.firma_id=c.firma_id
+             WHERE c.id=:id AND c.firma_id=:firma_id AND c.deleted_at IS NULL'
+        );
+        $statement->execute(['id' => $id, 'firma_id' => $firmaId]);
+        $row = $statement->fetch();
+
+        return is_array($row) ? $row : null;
+    }
+
+    public function radicadoExists(int $firmaId, string $radicado, ?int $excludeId = null): bool
+    {
+        $sql = 'SELECT COUNT(*) FROM casos WHERE firma_id=:firma_id AND radicado=:radicado AND deleted_at IS NULL';
+        $params = ['firma_id' => $firmaId, 'radicado' => $radicado];
+        if ($excludeId !== null) {
+            $sql .= ' AND id<>:id';
+            $params['id'] = $excludeId;
+        }
+        $statement = $this->pdo->prepare($sql);
+        $statement->execute($params);
+
+        return (int) $statement->fetchColumn() > 0;
+    }
+
+    /** @param array<string, mixed> $data */
+    public function create(array $data): int
+    {
+        $statement = $this->pdo->prepare(
+            'INSERT INTO casos
+            (firma_id,cliente_id,responsable_usuario_id,titulo,titulo_normalizado,descripcion,estado,prioridad,
+             tipo_proceso,jurisdiccion,despacho,radicado,fecha_apertura,created_at,updated_at)
+             VALUES
+            (:firma_id,:cliente_id,:responsable_usuario_id,:titulo,:titulo_normalizado,:descripcion,:estado,:prioridad,
+             :tipo_proceso,:jurisdiccion,:despacho,:radicado,:fecha_apertura,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))'
+        );
+        $statement->execute($data);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** @param array<string, mixed> $data */
+    public function update(int $firmaId, int $id, array $data): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE casos
+             SET cliente_id=:cliente_id,responsable_usuario_id=:responsable_usuario_id,titulo=:titulo,
+                 titulo_normalizado=:titulo_normalizado,descripcion=:descripcion,estado=:estado,prioridad=:prioridad,
+                 tipo_proceso=:tipo_proceso,jurisdiccion=:jurisdiccion,despacho=:despacho,radicado=:radicado,
+                 fecha_apertura=:fecha_apertura,updated_at=CURRENT_TIMESTAMP(6)
+             WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
+        );
+        $statement->execute($data + ['id' => $id, 'firma_id' => $firmaId]);
+    }
+
+    public function close(int $firmaId, int $id, int $userId, string $reason): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE casos
+             SET estado=\'cerrado\', closed_at=CURRENT_TIMESTAMP(6), closed_by_usuario_id=:usuario_id,
+                 close_reason=:motivo, updated_at=CURRENT_TIMESTAMP(6)
+             WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
+        );
+        $statement->execute(['usuario_id' => $userId, 'motivo' => $reason, 'id' => $id, 'firma_id' => $firmaId]);
+    }
+
+    public function archive(int $firmaId, int $id, int $userId, string $reason): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE casos
+             SET estado=\'archivado\', archived_at=CURRENT_TIMESTAMP(6), archived_by_usuario_id=:usuario_id,
+                 archive_reason=:motivo, updated_at=CURRENT_TIMESTAMP(6)
+             WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
+        );
+        $statement->execute(['usuario_id' => $userId, 'motivo' => $reason, 'id' => $id, 'firma_id' => $firmaId]);
+    }
+}

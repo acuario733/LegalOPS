@@ -1,0 +1,3 @@
+<?php declare(strict_types=1); ?>
+<div data-feedback hidden></div><?php foreach($documents as $document): ?><article class="card mb-3"><div class="card-header"><h2 class="card-title"><?= e($document['titulo']) ?> · v<?= e($document['version']) ?></h2></div><div class="card-body"><div class="border rounded p-3 mb-3" style="max-height:22rem;overflow:auto"><?= nl2br(e($document['contenido'])) ?></div><button class="btn btn-primary" data-action="/legal/<?= (int) $document['id'] ?>/aceptar" data-confirm="Confirmo que he leído y acepto esta versión.">Aceptar versión</button></div></article><?php endforeach; ?><?php if($documents===[]): ?><div class="alert alert-success">No tiene documentos legales pendientes de aceptación.</div><?php endif; ?>
+
