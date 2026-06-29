@@ -21,7 +21,8 @@ final class ProspectoService
         private readonly ProspectoValidator $validator,
         private readonly ClienteService $clienteService,
         private readonly Database $database,
-        private readonly AuditoriaService $audit
+        private readonly AuditoriaService $audit,
+        private readonly CatalogoLookupService $catalogs
     ) {
     }
 
@@ -128,7 +129,7 @@ final class ProspectoService
             'origen' => 'prospecto',
             'observaciones' => $prospect['notas'],
             'tratamiento_datos_autorizado' => (int) $prospect['tratamiento_datos_autorizado'] === 1 ? '1' : '0',
-            'autorizacion_medio' => 'prospecto',
+            'autorizacion_medio' => 'registro_interno',
             'autorizacion_version' => 'operacion-juridica-v1',
         ];
     }
@@ -148,13 +149,13 @@ final class ProspectoService
             'tipo_persona' => (string) ($data['tipo_persona'] ?? ($before['tipo_persona'] ?? 'natural')),
             'email' => $this->nullableString($data['email'] ?? ($before['email'] ?? null), 254, true),
             'telefono' => $this->nullableString($data['telefono'] ?? ($before['telefono'] ?? null), 60),
-            'tipo_documento' => $this->nullableString($data['tipo_documento'] ?? ($before['tipo_documento'] ?? null), 40),
+            'tipo_documento' => $this->catalogs->normalizeOptional($firmaId, 'tipo_documento', $data['tipo_documento'] ?? ($before['tipo_documento'] ?? null), 'Tipo de documento'),
             'numero_documento' => $this->nullableString($document, 80),
             'documento_normalizado' => $documentNormalized === '' ? null : $documentNormalized,
             'documento_hash' => $documentNormalized === '' ? null : hash('sha256', $documentNormalized),
             'empresa' => $this->nullableString($company, 180),
             'empresa_normalizada' => $company === '' ? null : $this->normalizeText($company, 180),
-            'fuente' => $this->nullableString($data['fuente'] ?? ($before['fuente'] ?? null), 120),
+            'fuente' => $this->catalogs->normalizeOptional($firmaId, 'origen_fuente', $data['fuente'] ?? ($before['fuente'] ?? null), 'Fuente'),
             'estado' => (string) ($data['estado'] ?? ($before['estado'] ?? 'nuevo')),
             'responsable_usuario_id' => $this->nullableInt($data['responsable_usuario_id'] ?? ($before['responsable_usuario_id'] ?? null)),
             'valor_estimado' => $this->nullableDecimal($data['valor_estimado'] ?? ($before['valor_estimado'] ?? null)),

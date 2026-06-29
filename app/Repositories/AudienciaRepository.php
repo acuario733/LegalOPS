@@ -78,9 +78,9 @@ final class AudienciaRepository extends BaseRepository
     {
         $statement = $this->pdo->prepare(
             'INSERT INTO audiencias
-            (firma_id,caso_id,responsable_usuario_id,titulo,fecha,hora,timezone,modalidad,despacho,lugar,enlace,estado,created_at,updated_at)
+            (firma_id,caso_id,responsable_usuario_id,titulo,fecha,hora,timezone,modalidad,despacho,juez_responsable,despacho_contacto,lugar,enlace,estado,created_at,updated_at)
              VALUES
-            (:firma_id,:caso_id,:responsable_usuario_id,:titulo,:fecha,:hora,:timezone,:modalidad,:despacho,:lugar,:enlace,:estado,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))'
+            (:firma_id,:caso_id,:responsable_usuario_id,:titulo,:fecha,:hora,:timezone,:modalidad,:despacho,:juez_responsable,:despacho_contacto,:lugar,:enlace,:estado,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))'
         );
         $statement->execute($data);
 
@@ -93,7 +93,8 @@ final class AudienciaRepository extends BaseRepository
         $statement = $this->pdo->prepare(
             'UPDATE audiencias
              SET caso_id=:caso_id,responsable_usuario_id=:responsable_usuario_id,titulo=:titulo,fecha=:fecha,hora=:hora,
-                 timezone=:timezone,modalidad=:modalidad,despacho=:despacho,lugar=:lugar,enlace=:enlace,estado=:estado,
+                 timezone=:timezone,modalidad=:modalidad,despacho=:despacho,juez_responsable=:juez_responsable,
+                 despacho_contacto=:despacho_contacto,lugar=:lugar,enlace=:enlace,estado=:estado,
                  updated_at=CURRENT_TIMESTAMP(6)
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );

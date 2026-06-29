@@ -25,7 +25,8 @@ final class GastoService
         private readonly LimitePlanService $limits,
         private readonly Database $database,
         private readonly AuditoriaService $audit,
-        private readonly Auth $auth
+        private readonly Auth $auth,
+        private readonly CatalogoLookupService $catalogs
     ) {
     }
 
@@ -48,7 +49,7 @@ final class GastoService
     /** @param array<string, mixed> $data */
     public function create(int $firmaId, array $data, Request $request): int
     {
-        $this->limits->requireCapacity($firmaId, 'gastos');
+        $this->limits->requireCapacity($firmaId, 'gastos', $request);
         $normalized = $this->validateRelations($firmaId, $this->normalize($firmaId, $data));
         $this->validate($normalized);
 
@@ -74,6 +75,9 @@ final class GastoService
     {
         $before = $this->find($firmaId, $id);
         $normalized = $this->validateRelations($firmaId, $this->normalize($firmaId, $data, $before));
+        if ($before['estado'] !== 'anulado' && $normalized['estado'] === 'anulado') {
+            throw new HttpException(422, 'Use el flujo de anulacion trazable para anular gastos.');
+        }
         $this->validate($normalized);
 
         $this->database->transaction(function () use ($firmaId, $id, $before, $normalized, $request): void {
@@ -87,6 +91,25 @@ final class GastoService
                 'documento_id' => $normalized['documento_id'],
             ], $request, $firmaId);
         });
+    }
+
+    /** @param array<string, mixed> $data */
+    public function annul(int $firmaId, int $id, array $data, Request $request): void
+    {
+        $gasto = $this->find($firmaId, $id);
+        if ($gasto['estado'] === 'anulado') {
+            throw new HttpException(409, 'El gasto ya esta anulado.');
+        }
+        $reason = $this->requiredReason($data['motivo'] ?? null);
+
+        $this->repository->updateStatus($firmaId, $id, 'anulado');
+        $this->audit->record('GASTO_ANULADO', 'finanzas', 'gasto', $id, [
+            'cliente_id' => $gasto['cliente_id'],
+            'caso_id' => $gasto['caso_id'],
+            'monto' => $gasto['monto'],
+            'moneda' => $gasto['moneda'],
+            'motivo' => $reason,
+        ], $request, $firmaId, 'warning');
     }
 
     /** @param array<string, mixed> $data */
@@ -114,7 +137,7 @@ final class GastoService
             'concepto_normalizado' => $this->normalizeText($concept, 180),
             'categoria' => $this->nullableString($data['categoria'] ?? ($before['categoria'] ?? null), 100),
             'monto' => $this->money($data['monto'] ?? ($before['monto'] ?? 0)),
-            'moneda' => strtoupper(mb_substr(trim((string) ($data['moneda'] ?? ($before['moneda'] ?? 'COP'))), 0, 3)),
+            'moneda' => $this->catalogs->normalizeRequired($firmaId, 'moneda', $data['moneda'] ?? ($before['moneda'] ?? 'COP'), 'Moneda'),
             'fecha_gasto' => $this->dateValue($data['fecha_gasto'] ?? ($before['fecha_gasto'] ?? date('Y-m-d'))),
             'estado' => (string) ($data['estado'] ?? ($before['estado'] ?? 'registrado')),
             'observaciones' => $this->nullableString($data['observaciones'] ?? ($before['observaciones'] ?? null), 2000),
@@ -211,5 +234,15 @@ final class GastoService
         $value = trim((string) ($value ?? ''));
 
         return $value === '' ? date('Y-m-d') : mb_substr($value, 0, 10);
+    }
+
+    private function requiredReason(mixed $value): string
+    {
+        $reason = trim((string) ($value ?? ''));
+        if (mb_strlen($reason) < 5) {
+            throw new HttpException(422, 'El motivo debe tener al menos 5 caracteres.');
+        }
+
+        return mb_substr($reason, 0, 500);
     }
 }

@@ -551,6 +551,45 @@ CREATE TABLE `finanza_permisos_portal` (
   CONSTRAINT `fk_finanza_portal_usuario` FOREIGN KEY (`autorizado_por_usuario_id`) REFERENCES `usuarios` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `firma_comercial_historial`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `firma_comercial_historial` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `firma_id` bigint(20) unsigned NOT NULL,
+  `evento` varchar(60) NOT NULL,
+  `estado_comercial` varchar(30) DEFAULT NULL,
+  `estado_comercial_anterior` varchar(30) DEFAULT NULL,
+  `plan_id` bigint(20) unsigned DEFAULT NULL,
+  `plan_anterior_id` bigint(20) unsigned DEFAULT NULL,
+  `firma_plan_id` bigint(20) unsigned DEFAULT NULL,
+  `recurso` varchar(100) DEFAULT NULL,
+  `limite_anterior` int(10) unsigned DEFAULT NULL,
+  `limite_nuevo` int(10) unsigned DEFAULT NULL,
+  `politica_anterior` varchar(20) DEFAULT NULL,
+  `politica_nueva` varchar(20) DEFAULT NULL,
+  `effective_at` datetime(6) DEFAULT NULL,
+  `starts_at` datetime(6) DEFAULT NULL,
+  `ends_at` datetime(6) DEFAULT NULL,
+  `renews_at` datetime(6) DEFAULT NULL,
+  `motivo` varchar(500) NOT NULL,
+  `usuario_id` bigint(20) unsigned DEFAULT NULL,
+  `metadata` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`metadata`)),
+  `created_at` datetime(6) NOT NULL DEFAULT current_timestamp(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_firma_comercial_firma_fecha` (`firma_id`,`created_at`),
+  KEY `idx_firma_comercial_evento` (`evento`,`created_at`),
+  KEY `idx_firma_comercial_plan` (`plan_id`),
+  KEY `idx_firma_comercial_usuario` (`usuario_id`),
+  KEY `fk_firma_comercial_plan_anterior` (`plan_anterior_id`),
+  KEY `fk_firma_comercial_firma_plan` (`firma_plan_id`),
+  CONSTRAINT `fk_firma_comercial_firma` FOREIGN KEY (`firma_id`) REFERENCES `firmas` (`id`),
+  CONSTRAINT `fk_firma_comercial_firma_plan` FOREIGN KEY (`firma_plan_id`) REFERENCES `firma_planes` (`id`),
+  CONSTRAINT `fk_firma_comercial_plan` FOREIGN KEY (`plan_id`) REFERENCES `planes` (`id`),
+  CONSTRAINT `fk_firma_comercial_plan_anterior` FOREIGN KEY (`plan_anterior_id`) REFERENCES `planes` (`id`),
+  CONSTRAINT `fk_firma_comercial_usuario` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `firma_limites`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -579,15 +618,37 @@ CREATE TABLE `firma_planes` (
   `firma_id` bigint(20) unsigned NOT NULL,
   `plan_id` bigint(20) unsigned NOT NULL,
   `estado` varchar(30) NOT NULL DEFAULT 'activo',
+  `effective_at` datetime(6) NOT NULL,
   `starts_at` datetime(6) NOT NULL DEFAULT current_timestamp(6),
+  `renews_at` datetime(6) DEFAULT NULL,
+  `billing_period` varchar(20) NOT NULL DEFAULT 'monthly',
+  `billing_anchor_day` tinyint(3) unsigned DEFAULT NULL,
+  `trial_started_at` datetime(6) DEFAULT NULL,
+  `trial_ends_at` datetime(6) DEFAULT NULL,
+  `payment_due_at` datetime(6) DEFAULT NULL,
+  `grace_ends_at` datetime(6) DEFAULT NULL,
+  `auto_suspend_at` datetime(6) DEFAULT NULL,
+  `proration_policy` varchar(30) NOT NULL DEFAULT 'manual_review',
+  `proration_note` varchar(500) DEFAULT NULL,
+  `assigned_by_usuario_id` bigint(20) unsigned DEFAULT NULL,
+  `motivo` varchar(500) DEFAULT NULL,
+  `replaced_by_firma_plan_id` bigint(20) unsigned DEFAULT NULL,
   `ends_at` datetime(6) DEFAULT NULL,
   `created_at` datetime(6) NOT NULL DEFAULT current_timestamp(6),
   PRIMARY KEY (`id`),
   KEY `idx_firma_planes_actual` (`firma_id`,`estado`,`ends_at`),
   KEY `idx_firma_planes_plan` (`plan_id`),
   KEY `idx_firma_planes_estado` (`estado`,`starts_at`,`ends_at`),
+  KEY `idx_firma_planes_effective` (`firma_id`,`estado`,`effective_at`,`ends_at`),
+  KEY `idx_firma_planes_assigned_by` (`assigned_by_usuario_id`),
+  KEY `idx_firma_planes_billing_due` (`estado`,`payment_due_at`,`auto_suspend_at`),
+  KEY `idx_firma_planes_trial` (`estado`,`trial_ends_at`),
+  KEY `idx_firma_planes_proration` (`estado`,`proration_policy`),
+  KEY `fk_firma_planes_replaced_by` (`replaced_by_firma_plan_id`),
+  CONSTRAINT `fk_firma_planes_assigned_by` FOREIGN KEY (`assigned_by_usuario_id`) REFERENCES `usuarios` (`id`),
   CONSTRAINT `fk_firma_planes_firma` FOREIGN KEY (`firma_id`) REFERENCES `firmas` (`id`),
-  CONSTRAINT `fk_firma_planes_plan` FOREIGN KEY (`plan_id`) REFERENCES `planes` (`id`)
+  CONSTRAINT `fk_firma_planes_plan` FOREIGN KEY (`plan_id`) REFERENCES `planes` (`id`),
+  CONSTRAINT `fk_firma_planes_replaced_by` FOREIGN KEY (`replaced_by_firma_plan_id`) REFERENCES `firma_planes` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `firmas`;
@@ -1239,6 +1300,38 @@ CREATE TABLE `user_sessions` (
   CONSTRAINT `fk_user_sessions_usuario` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `usuario_cambios_sensibles`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `usuario_cambios_sensibles` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `firma_id` bigint(20) unsigned NOT NULL,
+  `usuario_afectado_id` bigint(20) unsigned NOT NULL,
+  `usuario_actor_id` bigint(20) unsigned DEFAULT NULL,
+  `campo` varchar(80) NOT NULL,
+  `valor_anterior_enmascarado` varchar(255) DEFAULT NULL,
+  `valor_nuevo_enmascarado` varchar(255) DEFAULT NULL,
+  `valor_anterior_hash` char(64) DEFAULT NULL,
+  `valor_nuevo_hash` char(64) DEFAULT NULL,
+  `origen` varchar(20) NOT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` varchar(255) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT current_timestamp(6),
+  PRIMARY KEY (`id`),
+  KEY `fk_usuario_cambios_afectado_firma` (`usuario_afectado_id`,`firma_id`),
+  KEY `fk_usuario_cambios_actor_firma` (`usuario_actor_id`,`firma_id`),
+  KEY `idx_usuario_cambios_afectado_fecha` (`firma_id`,`usuario_afectado_id`,`created_at`),
+  KEY `idx_usuario_cambios_actor_fecha` (`firma_id`,`usuario_actor_id`,`created_at`),
+  KEY `idx_usuario_cambios_campo_fecha` (`firma_id`,`campo`,`created_at`),
+  CONSTRAINT `fk_usuario_cambios_actor_firma` FOREIGN KEY (`usuario_actor_id`, `firma_id`) REFERENCES `usuarios` (`id`, `firma_id`),
+  CONSTRAINT `fk_usuario_cambios_afectado_firma` FOREIGN KEY (`usuario_afectado_id`, `firma_id`) REFERENCES `usuarios` (`id`, `firma_id`),
+  CONSTRAINT `fk_usuario_cambios_firma` FOREIGN KEY (`firma_id`) REFERENCES `firmas` (`id`),
+  CONSTRAINT `chk_usuario_cambios_origen` CHECK (`origen` in ('mi_perfil','usuarios')),
+  CONSTRAINT `chk_usuario_cambios_hash_anterior` CHECK (`valor_anterior_hash` is null or `valor_anterior_hash` regexp '^[0-9a-f]{64}$'),
+  CONSTRAINT `chk_usuario_cambios_hash_nuevo` CHECK (`valor_nuevo_hash` is null or `valor_nuevo_hash` regexp '^[0-9a-f]{64}$'),
+  CONSTRAINT `chk_usuario_cambios_dato_sensible` CHECK (`campo` not in ('numero_documento','numero_tarjeta_profesional') or (`valor_anterior_enmascarado` is null or locate('*',`valor_anterior_enmascarado`) > 0 and `valor_anterior_hash` is not null) and (`valor_nuevo_enmascarado` is null or locate('*',`valor_nuevo_enmascarado`) > 0 and `valor_nuevo_hash` is not null))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `usuario_roles`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -1265,6 +1358,22 @@ CREATE TABLE `usuarios` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `firma_id` bigint(20) unsigned DEFAULT NULL,
   `nombre` varchar(160) NOT NULL,
+  `nombres` varchar(160) DEFAULT NULL,
+  `apellidos` varchar(160) DEFAULT NULL,
+  `tipo_documento_id` bigint(20) unsigned DEFAULT NULL,
+  `numero_documento` varchar(80) DEFAULT NULL,
+  `numero_documento_normalizado` varchar(80) DEFAULT NULL,
+  `telefono` varchar(40) DEFAULT NULL,
+  `cargo` varchar(160) DEFAULT NULL,
+  `foto_perfil_path` varchar(500) DEFAULT NULL,
+  `es_abogado` tinyint(1) NOT NULL DEFAULT 0,
+  `tiene_tarjeta_profesional` tinyint(1) NOT NULL DEFAULT 0,
+  `numero_tarjeta_profesional` varchar(80) DEFAULT NULL,
+  `numero_tarjeta_profesional_normalizado` varchar(80) DEFAULT NULL,
+  `tarjeta_profesional_verificacion_estado` varchar(20) DEFAULT NULL,
+  `fecha_verificacion_tarjeta` datetime(6) DEFAULT NULL,
+  `usuario_verificador_tarjeta_id` bigint(20) unsigned DEFAULT NULL,
+  `observacion_verificacion_tarjeta` varchar(1000) DEFAULT NULL,
   `email` varchar(254) NOT NULL,
   `email_normalizado` varchar(254) NOT NULL,
   `email_scope` varchar(320) NOT NULL,
@@ -1281,9 +1390,18 @@ CREATE TABLE `usuarios` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_usuarios_email_scope` (`email_scope`),
   UNIQUE KEY `uq_usuarios_id_firma` (`id`,`firma_id`),
+  UNIQUE KEY `uq_usuarios_documento_firma` (`firma_id`,`tipo_documento_id`,`numero_documento_normalizado`),
   KEY `idx_usuarios_firma_estado` (`firma_id`,`estado`,`deleted_at`),
   KEY `idx_usuarios_email_normalizado` (`email_normalizado`),
-  CONSTRAINT `fk_usuarios_firma` FOREIGN KEY (`firma_id`) REFERENCES `firmas` (`id`)
+  KEY `idx_usuarios_tarjeta_pendiente` (`firma_id`,`tarjeta_profesional_verificacion_estado`,`deleted_at`),
+  KEY `idx_usuarios_tipo_documento` (`tipo_documento_id`),
+  KEY `idx_usuarios_verificador_firma` (`usuario_verificador_tarjeta_id`,`firma_id`),
+  CONSTRAINT `fk_usuarios_firma` FOREIGN KEY (`firma_id`) REFERENCES `firmas` (`id`),
+  CONSTRAINT `fk_usuarios_tipo_documento` FOREIGN KEY (`tipo_documento_id`) REFERENCES `catalogo_items` (`id`),
+  CONSTRAINT `fk_usuarios_verificador_firma` FOREIGN KEY (`usuario_verificador_tarjeta_id`, `firma_id`) REFERENCES `usuarios` (`id`, `firma_id`),
+  CONSTRAINT `chk_usuarios_es_abogado` CHECK (`es_abogado` in (0,1)),
+  CONSTRAINT `chk_usuarios_tiene_tarjeta` CHECK (`tiene_tarjeta_profesional` in (0,1)),
+  CONSTRAINT `chk_usuarios_tarjeta_consistencia` CHECK (`tiene_tarjeta_profesional` = 0 and `numero_tarjeta_profesional` is null and `numero_tarjeta_profesional_normalizado` is null and `tarjeta_profesional_verificacion_estado` is null and `fecha_verificacion_tarjeta` is null and `usuario_verificador_tarjeta_id` is null and `observacion_verificacion_tarjeta` is null or `tiene_tarjeta_profesional` = 1 and nullif(trim(`numero_tarjeta_profesional`),'') is not null and nullif(trim(`numero_tarjeta_profesional_normalizado`),'') is not null and `tarjeta_profesional_verificacion_estado` in ('pendiente','verificada','rechazada') and (`tarjeta_profesional_verificacion_estado` = 'pendiente' and `fecha_verificacion_tarjeta` is null and `usuario_verificador_tarjeta_id` is null and `observacion_verificacion_tarjeta` is null or `tarjeta_profesional_verificacion_estado` in ('verificada','rechazada') and `fecha_verificacion_tarjeta` is not null and `usuario_verificador_tarjeta_id` is not null))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -1295,4 +1413,3 @@ CREATE TABLE `usuarios` (
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
-

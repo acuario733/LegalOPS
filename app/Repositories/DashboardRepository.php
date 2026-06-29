@@ -46,29 +46,11 @@ final class DashboardRepository extends BaseRepository
         return $statement->fetchAll();
     }
 
-    /** @return array<string, float> */
-    public function financeSummary(int $firmaId): array
-    {
-        return [
-            'honorarios' => $this->sum('honorarios', $firmaId, 'estado<>\'cancelado\''),
-            'pagos' => $this->sum('pagos', $firmaId, 'estado=\'registrado\''),
-            'gastos' => $this->sum('gastos', $firmaId, 'estado=\'registrado\''),
-        ];
-    }
-
     private function count(string $sql, int $firmaId): int
     {
         $statement = $this->pdo->prepare($sql);
         $statement->execute(['firma_id' => $firmaId]);
 
         return (int) $statement->fetchColumn();
-    }
-
-    private function sum(string $table, int $firmaId, string $condition): float
-    {
-        $statement = $this->pdo->prepare('SELECT COALESCE(SUM(monto),0) FROM ' . $table . ' WHERE firma_id=:firma_id AND deleted_at IS NULL AND ' . $condition);
-        $statement->execute(['firma_id' => $firmaId]);
-
-        return (float) $statement->fetchColumn();
     }
 }

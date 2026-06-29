@@ -9,6 +9,8 @@
                     <dt class="col-sm-3">Estado</dt><dd class="col-sm-9"><?= e($ticket['estado']) ?></dd>
                     <dt class="col-sm-3">Prioridad</dt><dd class="col-sm-9"><?= e($ticket['prioridad']) ?></dd>
                     <dt class="col-sm-3">Categoria</dt><dd class="col-sm-9"><?= e($ticket['categoria'] ?? '') ?></dd>
+                    <dt class="col-sm-3">SLA primera respuesta</dt><dd class="col-sm-9"><?= e($ticket['primera_respuesta_due_at'] ?? '') ?></dd>
+                    <dt class="col-sm-3">SLA solucion</dt><dd class="col-sm-9"><?= e($ticket['solucion_due_at'] ?? '') ?></dd>
                 </dl>
                 <?php foreach ($ticket['mensajes'] as $mensaje): ?>
                     <div class="border-top py-3">

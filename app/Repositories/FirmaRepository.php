@@ -11,10 +11,19 @@ final class FirmaRepository extends BaseRepository
     {
         return $this->pdo->query(
             'SELECT f.id, f.uuid, f.nombre, f.slug, f.estado, f.timezone, f.suspended_at, f.created_at,
-                    p.nombre AS plan_nombre
+                    fp.id AS firma_plan_id, fp.estado AS plan_estado, fp.effective_at AS plan_effective_at,
+                    fp.starts_at AS plan_starts_at, fp.renews_at AS plan_renews_at,
+                    fp.billing_period AS plan_billing_period, fp.billing_anchor_day AS plan_billing_anchor_day,
+                    fp.trial_started_at AS plan_trial_started_at, fp.trial_ends_at AS plan_trial_ends_at,
+                    fp.payment_due_at AS plan_payment_due_at, fp.grace_ends_at AS plan_grace_ends_at,
+                    fp.auto_suspend_at AS plan_auto_suspend_at, fp.proration_policy AS plan_proration_policy,
+                    fp.proration_note AS plan_proration_note, fp.motivo AS plan_motivo,
+                    fp.assigned_by_usuario_id, p.nombre AS plan_nombre, p.codigo AS plan_codigo,
+                    u.nombre AS plan_assigned_by_nombre
              FROM firmas f
              LEFT JOIN firma_planes fp ON fp.firma_id = f.id AND fp.estado = \'activo\' AND fp.ends_at IS NULL
              LEFT JOIN planes p ON p.id = fp.plan_id
+             LEFT JOIN usuarios u ON u.id = fp.assigned_by_usuario_id
              WHERE f.deleted_at IS NULL
              ORDER BY f.nombre'
         )->fetchAll();
@@ -64,15 +73,26 @@ final class FirmaRepository extends BaseRepository
 
     public function setStatus(int $id, string $status, ?string $reason): void
     {
+        $this->setCommercialStatus($id, $status, $reason);
+    }
+
+    public function setCommercialStatus(int $id, string $status, ?string $reason): void
+    {
         $statement = $this->pdo->prepare(
             'UPDATE firmas
              SET estado = :estado,
-                 suspended_at = CASE WHEN :estado_check = \'suspendida\' THEN CURRENT_TIMESTAMP(6) ELSE NULL END,
-                 suspension_reason = :motivo,
+                 suspended_at = CASE WHEN :estado_suspended = \'suspendida\' THEN COALESCE(suspended_at, CURRENT_TIMESTAMP(6)) ELSE NULL END,
+                 suspension_reason = CASE WHEN :estado_reason = \'suspendida\' THEN :motivo ELSE NULL END,
                  updated_at = CURRENT_TIMESTAMP(6)
              WHERE id = :id AND deleted_at IS NULL'
         );
-        $statement->execute(['estado' => $status, 'estado_check' => $status, 'motivo' => $reason, 'id' => $id]);
+        $statement->execute([
+            'estado' => $status,
+            'estado_suspended' => $status,
+            'estado_reason' => $status,
+            'motivo' => $reason,
+            'id' => $id,
+        ]);
     }
 
     /** @return array<string, int> */
@@ -90,4 +110,3 @@ final class FirmaRepository extends BaseRepository
         return array_map('intval', $row);
     }
 }
-

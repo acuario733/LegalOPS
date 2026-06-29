@@ -1,0 +1,201 @@
+/*
+ * mobile.css — Overrides mobile-first para LegalOPS Cloud
+ * Se carga después del CSS de AdminLTE. No modifica desktop (≥992px).
+ */
+
+/* ── SIDEBAR MOBILE (AdminLTE 4.x usa .app-sidebar) ─────────────────────── */
+@media (max-width: 991.98px) {
+    .app-sidebar,
+    .sidebar,
+    #sidebar {
+        position: fixed !important;
+        top: 0;
+        left: -280px;
+        width: 280px !important;
+        height: 100vh !important;
+        z-index: 1050;
+        transition: left 0.3s ease;
+        overflow-y: auto;
+        box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+    }
+
+    /* AdminLTE abre el sidebar con sidebar-open en el <body> */
+    .sidebar-open .app-sidebar,
+    .app-sidebar.show,
+    .sidebar.show,
+    #sidebar.show {
+        left: 0 !important;
+    }
+
+    /* Overlay oscuro cuando sidebar está abierto */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1049;
+        cursor: pointer;
+    }
+
+    .sidebar-overlay.show {
+        display: block;
+    }
+
+    /* El contenido principal ocupa todo el ancho */
+    .app-main,
+    .main-content,
+    #main-content {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+}
+
+/* ── HEADER MOBILE ───────────────────────────────────────────────────────── */
+@media (max-width: 991.98px) {
+    .app-header,
+    .navbar,
+    .topbar {
+        padding: 0.5rem 1rem !important;
+    }
+
+    /* Botón hamburguesa visible solo en mobile */
+    .sidebar-toggle-btn {
+        display: flex !important;
+    }
+}
+
+@media (min-width: 992px) {
+    .sidebar-toggle-btn {
+        display: none !important;
+    }
+}
+
+/* ── TABLAS RESPONSIVE ───────────────────────────────────────────────────── */
+@media (max-width: 767.98px) {
+    .table-responsive-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    table {
+        font-size: 0.85rem;
+    }
+
+    .col-hide-mobile {
+        display: none !important;
+    }
+}
+
+/* ── FORMULARIOS MOBILE ──────────────────────────────────────────────────── */
+@media (max-width: 767.98px) {
+    /* font-size 16px evita zoom automático en iOS */
+    .form-control,
+    .form-select,
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    input[type="date"],
+    input[type="time"],
+    textarea,
+    select {
+        font-size: 16px !important;
+    }
+
+    .form-group,
+    .mb-3 {
+        margin-bottom: 1rem !important;
+    }
+}
+
+/* ── MODALES FULLSCREEN EN MOBILE (<576px) ───────────────────────────────── */
+@media (max-width: 575.98px) {
+    .modal-dialog {
+        margin: 0 !important;
+        max-width: 100% !important;
+        min-height: 100vh;
+    }
+
+    .modal-content {
+        min-height: 100vh;
+        border-radius: 0 !important;
+    }
+}
+
+/* ── CARDS MOBILE ────────────────────────────────────────────────────────── */
+@media (max-width: 767.98px) {
+    .card {
+        margin-bottom: 1rem;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+}
+
+/* ── TIPOGRAFÍA MOBILE ───────────────────────────────────────────────────── */
+@media (max-width: 767.98px) {
+    body {
+        font-size: 14px;
+    }
+
+    h1 { font-size: 1.5rem; }
+    h2 { font-size: 1.25rem; }
+    h3 { font-size: 1.1rem; }
+
+    small,
+    .text-small {
+        font-size: 13px !important;
+    }
+}
+
+/* ── FAB (Floating Action Button) ────────────────────────────────────────── */
+@media (max-width: 767.98px) {
+    .fab-mobile {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 1.5rem;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+    }
+}
+
+@media (min-width: 768px) {
+    .fab-mobile {
+        display: none !important;
+    }
+}
+
+/* ── TOUCH TARGETS (WCAG 2.5.5 — mínimo 44×44px) ────────────────────────── */
+@media (max-width: 767.98px) {
+    .btn,
+    a.nav-link,
+    .dropdown-item {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+    }
+}
+
+/* ── EVITAR SCROLL HORIZONTAL GLOBAL ────────────────────────────────────── */
+@media (max-width: 991.98px) {
+    html,
+    body {
+        overflow-x: hidden;
+        max-width: 100%;
+    }
+
+    .container-fluid {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+}

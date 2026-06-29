@@ -12,6 +12,7 @@ use App\Services\CasoService;
 use App\Services\TareaService;
 use App\Services\TerminoService;
 use App\Services\UsuarioService;
+use App\Validators\TareaValidator;
 
 final class TareaController extends Controller
 {
@@ -48,6 +49,11 @@ final class TareaController extends Controller
 
     public function store(Request $request): Response
     {
+        $validator = new TareaValidator();
+        if (!$validator->validateData((array) $request->input())) {
+            return $this->json(['validation' => $validator->errors()], 'Datos inválidos. Por favor revisa los campos.', 422);
+        }
+
         $id = $this->container->get(TareaService::class)->create($this->firmaId(), (array) $request->input(), $request);
 
         return $this->json(['id' => $id], 'Tarea creada correctamente.', 201);
@@ -55,6 +61,11 @@ final class TareaController extends Controller
 
     public function update(Request $request, string $id): Response
     {
+        $validator = new TareaValidator();
+        if (!$validator->validateData((array) $request->input())) {
+            return $this->json(['validation' => $validator->errors()], 'Datos inválidos. Por favor revisa los campos.', 422);
+        }
+
         $this->container->get(TareaService::class)->update($this->firmaId(), (int) $id, (array) $request->input(), $request);
 
         return $this->json(null, 'Tarea actualizada correctamente.');

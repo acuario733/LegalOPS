@@ -23,6 +23,7 @@ final class UsuarioController extends Controller
             'roles' => $this->container->get(RolService::class)->all($firmaId),
             'csrfToken' => $this->csrf->token(),
             'currentUser' => $this->currentUser(),
+            'canVerifyProfessional' => $this->permissions->allows('usuarios.verificar_profesional', (array) $this->currentUser()),
         ]);
     }
 
@@ -44,7 +45,8 @@ final class UsuarioController extends Controller
 
     public function update(Request $request, string $id): Response
     {
-        $this->container->get(UsuarioService::class)->update($this->firmaId(), (int) $id, (array) $request->input(), $request);
+        $roles = $request->input('roles', []);
+        $this->container->get(UsuarioService::class)->update($this->firmaId(), (int) $id, (array) $request->input(), is_array($roles) ? $roles : [], $request);
 
         return $this->json(null, 'Usuario actualizado correctamente.');
     }
@@ -61,6 +63,13 @@ final class UsuarioController extends Controller
         $this->container->get(UsuarioService::class)->reactivate($this->firmaId(), (int) $id, $request);
 
         return $this->json(null, 'Usuario reactivado.');
+    }
+
+    public function verifyProfessionalCard(Request $request, string $id): Response
+    {
+        $this->container->get(UsuarioService::class)->verifyProfessionalCard($this->firmaId(), (int) $id, (array) $request->input(), $request);
+
+        return $this->json(null, 'Verificación de tarjeta profesional registrada.');
     }
 
     private function firmaId(): int

@@ -11,12 +11,18 @@ final class UsuarioRepository extends BaseRepository
     {
         $statement = $this->pdo->prepare(
             'SELECT u.id,u.nombre,u.email,u.tipo,u.estado,u.last_login_at,u.created_at,
+                    u.es_abogado,u.tiene_tarjeta_profesional,u.numero_tarjeta_profesional,
+                    u.numero_tarjeta_profesional_normalizado,u.tarjeta_profesional_verificacion_estado,
+                    u.fecha_verificacion_tarjeta,u.usuario_verificador_tarjeta_id,u.observacion_verificacion_tarjeta,
                     GROUP_CONCAT(DISTINCT r.nombre ORDER BY r.nombre SEPARATOR \', \') AS roles
              FROM usuarios u
              LEFT JOIN usuario_roles ur ON ur.usuario_id=u.id AND ur.firma_id=u.firma_id
              LEFT JOIN roles r ON r.id=ur.rol_id AND r.firma_id=ur.firma_id
              WHERE u.firma_id=:firma_id AND u.deleted_at IS NULL
-             GROUP BY u.id,u.nombre,u.email,u.tipo,u.estado,u.last_login_at,u.created_at
+             GROUP BY u.id,u.nombre,u.email,u.tipo,u.estado,u.last_login_at,u.created_at,
+                      u.es_abogado,u.tiene_tarjeta_profesional,u.numero_tarjeta_profesional,
+                      u.numero_tarjeta_profesional_normalizado,u.tarjeta_profesional_verificacion_estado,
+                      u.fecha_verificacion_tarjeta,u.usuario_verificador_tarjeta_id,u.observacion_verificacion_tarjeta
              ORDER BY u.nombre'
         );
         $statement->execute(['firma_id' => $firmaId]);
@@ -79,6 +85,30 @@ final class UsuarioRepository extends BaseRepository
         return (int) $statement->fetchColumn() > 0;
     }
 
+    /** @return list<array<string, mixed>> */
+    public function searchForSelect(int $firmaId, string $query, int $limit = 20, string $tipo = 'interno'): array
+    {
+        $normalized = preg_replace('/\s+/', ' ', mb_strtolower(trim($query))) ?? '';
+        $email = strtolower(trim($query));
+        $statement = $this->pdo->prepare(
+            'SELECT id,nombre,email,tipo,estado
+             FROM usuarios
+             WHERE firma_id=:firma_id AND deleted_at IS NULL AND estado=\'activo\' AND tipo=:tipo
+               AND (:q_empty=1 OR nombre LIKE :raw OR email_normalizado LIKE :email)
+             ORDER BY nombre ASC, id ASC
+             LIMIT :limit'
+        );
+        $statement->bindValue(':firma_id', $firmaId, \PDO::PARAM_INT);
+        $statement->bindValue(':tipo', $tipo);
+        $statement->bindValue(':q_empty', $normalized === '' && $email === '' ? 1 : 0, \PDO::PARAM_INT);
+        $statement->bindValue(':raw', '%' . trim($query) . '%');
+        $statement->bindValue(':email', '%' . $email . '%');
+        $statement->bindValue(':limit', max(1, min(50, $limit)), \PDO::PARAM_INT);
+        $statement->execute();
+
+        return $statement->fetchAll();
+    }
+
     /** @param array<string, mixed> $data */
     public function create(array $data): int
     {
@@ -124,6 +154,28 @@ final class UsuarioRepository extends BaseRepository
             'UPDATE usuarios SET password_hash=:password_hash,must_change_password=0,updated_at=CURRENT_TIMESTAMP(6) WHERE id=:id AND deleted_at IS NULL'
         );
         $statement->execute(['password_hash' => $passwordHash, 'id' => $id]);
+    }
+
+    public function verifyProfessionalCard(int $firmaId, int $id, int $verifierId, string $status, ?string $observation): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE usuarios
+             SET tarjeta_profesional_verificacion_estado = :estado,
+                 fecha_verificacion_tarjeta = CURRENT_TIMESTAMP(6),
+                 usuario_verificador_tarjeta_id = :verificador_id,
+                 observacion_verificacion_tarjeta = :observacion,
+                 updated_at = CURRENT_TIMESTAMP(6)
+             WHERE id = :id
+               AND firma_id = :firma_id
+               AND deleted_at IS NULL'
+        );
+        $statement->execute([
+            'estado' => $status,
+            'verificador_id' => $verifierId,
+            'observacion' => $observation,
+            'id' => $id,
+            'firma_id' => $firmaId,
+        ]);
     }
 
     /** @return list<string> */

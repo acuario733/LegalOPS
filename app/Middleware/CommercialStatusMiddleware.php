@@ -11,18 +11,20 @@ use App\Core\Response;
 
 final class CommercialStatusMiddleware implements MiddlewareInterface
 {
-    public function __construct(private readonly Auth $auth)
+    public function __construct(
+        private readonly Auth $auth,
+        private readonly \App\Services\CommercialStatusService $commercialStatus
+    )
     {
     }
 
     public function handle(Request $request, callable $next): Response
     {
-        $status = strtolower((string) ($this->auth->user()['firma_estado'] ?? 'active'));
-        if (!in_array($status, ['active', 'activa'], true)) {
-            throw new HttpException(423, 'La firma no está habilitada para operar.');
+        $status = $this->auth->user()['firma_estado'] ?? null;
+        if (!$this->commercialStatus->allowsOperation($status)) {
+            throw new HttpException(423, $this->commercialStatus->consequence($status), ['code' => 'COMMERCIAL_STATUS_BLOCKED']);
         }
 
         return $next($request);
     }
 }
-

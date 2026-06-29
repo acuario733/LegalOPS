@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\HttpException;
+use App\Core\Permission;
 use App\Core\Request;
 use App\Repositories\ClienteRepository;
 use App\Validators\ClienteValidator;
@@ -27,7 +28,9 @@ final class ClienteService
         private readonly LimitePlanService $limits,
         private readonly Database $database,
         private readonly AuditoriaService $audit,
-        private readonly Auth $auth
+        private readonly Auth $auth,
+        private readonly Permission $permissions,
+        private readonly CatalogoLookupService $catalogs
     ) {
     }
 
@@ -50,6 +53,7 @@ final class ClienteService
         $masked = $this->masked($client);
         $masked['observaciones'] = $client['observaciones'];
         $masked['autorizaciones'] = $this->repository->authorizations($firmaId, $id);
+        $masked['ficha360'] = $this->filterFicha360($this->repository->ficha360($firmaId, $id));
 
         return $masked;
     }
@@ -57,7 +61,7 @@ final class ClienteService
     /** @param array<string, mixed> $data */
     public function create(int $firmaId, array $data, Request $request): int
     {
-        $this->limits->requireCapacity($firmaId, 'clientes');
+        $this->limits->requireCapacity($firmaId, 'clientes', $request);
         $normalized = $this->normalize($firmaId, $data);
         if (!$this->validator->validateCreate($normalized)) {
             throw new HttpException(422, 'Revise los datos del cliente.', $this->validator->errors());
@@ -124,6 +128,9 @@ final class ClienteService
     /** @return array{campo: string, etiqueta: string, valor: string} */
     public function reveal(int $firmaId, int $id, string $field, Request $request): array
     {
+        if (!$this->permissions->allows('clientes.revelar', $this->auth->user())) {
+            throw new HttpException(403, 'No tiene permiso para revelar datos sensibles del cliente.');
+        }
         $normalized = ['campo' => $field];
         if (!$this->validator->validateReveal($normalized)) {
             throw new HttpException(422, 'El dato solicitado no es valido.', $this->validator->errors());
@@ -144,6 +151,43 @@ final class ClienteService
         return $this->repository->findForFirma($firmaId, $id) ?? throw new HttpException(404, 'El cliente no existe en la firma.');
     }
 
+    /** @param array<string, mixed> $ficha @return array<string, mixed> */
+    private function filterFicha360(array $ficha): array
+    {
+        $user = $this->auth->user();
+        $allowed = [
+            'casos' => $this->permissions->allows('casos.ver', $user),
+            'documentos' => $this->permissions->allows('documentos.ver', $user),
+            'finanzas' => $this->permissions->allows('finanzas.ver', $user),
+            'portal' => $this->permissions->allows('portal.autorizar', $user),
+            'actividad' => $this->permissions->allows('auditoria.ver', $user),
+        ];
+        if (!$allowed['casos']) {
+            $ficha['casos'] = [];
+            $ficha['resumen']['casos'] = null;
+        }
+        if (!$allowed['documentos']) {
+            $ficha['documentos'] = [];
+            $ficha['resumen']['documentos'] = null;
+        }
+        if (!$allowed['finanzas']) {
+            $ficha['finanzas'] = [];
+            $ficha['resumen']['honorarios'] = null;
+            $ficha['resumen']['pagos'] = null;
+            $ficha['resumen']['gastos'] = null;
+        }
+        if (!$allowed['portal']) {
+            $ficha['portal'] = [];
+            $ficha['resumen']['portal_accesos'] = null;
+        }
+        if (!$allowed['actividad']) {
+            $ficha['actividad'] = [];
+        }
+        $ficha['permisos'] = $allowed;
+
+        return $ficha;
+    }
+
     /** @param array<string, mixed> $data @param array<string, mixed>|null $before @return array<string, mixed> */
     private function normalize(int $firmaId, array $data, ?array $before = null): array
     {
@@ -159,7 +203,7 @@ final class ClienteService
             'tipo_persona' => (string) ($data['tipo_persona'] ?? ($before['tipo_persona'] ?? 'natural')),
             'nombre_razon_social' => trim((string) ($data['nombre_razon_social'] ?? ($before['nombre_razon_social'] ?? ''))),
             'nombre_normalizado' => $this->normalizeName((string) ($data['nombre_razon_social'] ?? ($before['nombre_razon_social'] ?? ''))),
-            'tipo_documento' => $this->nullableString($data['tipo_documento'] ?? ($before['tipo_documento'] ?? null), 40),
+            'tipo_documento' => $this->catalogs->normalizeOptional($firmaId, 'tipo_documento', $data['tipo_documento'] ?? ($before['tipo_documento'] ?? null), 'Tipo de documento'),
             'numero_documento' => $this->nullableString($document, 80),
             'documento_normalizado' => $documentNormalized === '' ? null : $documentNormalized,
             'documento_hash' => $documentNormalized === '' ? null : hash('sha256', $documentNormalized),
@@ -167,11 +211,11 @@ final class ClienteService
             'telefono' => $this->nullableString($this->sensitiveValue('telefono', $data, $before), 60),
             'direccion' => $this->nullableString($this->sensitiveValue('direccion', $data, $before), 255),
             'estado' => (string) ($data['estado'] ?? ($before['estado'] ?? 'activo')),
-            'origen' => $this->nullableString($data['origen'] ?? ($before['origen'] ?? null), 120),
+            'origen' => $this->catalogs->normalizeOptional($firmaId, 'origen_fuente', $data['origen'] ?? ($before['origen'] ?? null), 'Origen'),
             'observaciones' => $this->nullableString($data['observaciones'] ?? ($before['observaciones'] ?? null), 1000),
             'tratamiento_datos_autorizado' => $authorized ? 1 : 0,
             'autorizacion_tratamiento_at' => $authorized ? ($before['autorizacion_tratamiento_at'] ?? date('Y-m-d H:i:s')) : null,
-            'autorizacion_medio' => $this->nullableString($data['autorizacion_medio'] ?? null, 120),
+            'autorizacion_medio' => $this->catalogs->normalizeOptional($firmaId, 'medio', $data['autorizacion_medio'] ?? null, 'Medio de autorizacion'),
             'autorizacion_version' => $this->nullableString($data['autorizacion_version'] ?? null, 80),
             'autorizacion_observacion' => $this->nullableString($data['autorizacion_observacion'] ?? null, 500),
         ];

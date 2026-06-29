@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 return [
     'superadmin' => [
+        'perfil.ver', 'perfil.editar', 'perfil.cambiar_password',
         'firmas.ver', 'firmas.crear', 'firmas.editar', 'firmas.suspender', 'firmas.reactivar',
         'planes.ver', 'planes.crear', 'planes.editar', 'planes.asignar',
         'limites.ver', 'limites.editar', 'auditoria.ver',
@@ -11,13 +12,21 @@ return [
         'soporte.ver_global', 'checklist.ver', 'checklist.evaluar', 'checklist.aprobar',
     ],
     'firma' => [
-        'usuarios.ver', 'usuarios.crear', 'usuarios.editar', 'usuarios.desactivar',
+        'perfil.ver', 'perfil.editar', 'perfil.cambiar_password',
+        'usuarios.ver', 'usuarios.crear', 'usuarios.editar', 'usuarios.editar_cargo',
+        'usuarios.verificar_profesional', 'usuarios.editar_cuenta', 'usuarios.asignar_roles',
+        'usuarios.desactivar', 'usuarios.reactivar', 'usuarios.revocar_sesiones',
+        'usuarios.ver_historial', 'usuarios.ver_datos_sensibles',
         'roles.ver', 'roles.crear', 'roles.editar', 'roles.asignar',
         'permisos.ver', 'permisos.asignar', 'sesiones.ver', 'sesiones.revocar',
         'auditoria.ver', 'configuracion.ver', 'configuracion.editar',
         'legal.ver', 'legal.aceptar',
         'clientes.ver', 'clientes.crear', 'clientes.editar', 'clientes.eliminar', 'clientes.revelar',
         'prospectos.ver', 'prospectos.crear', 'prospectos.editar', 'prospectos.convertir',
+        'intake.ver', 'intake.crear', 'intake.editar', 'intake.eliminar',
+        'booking.ver', 'booking.crear', 'booking.editar', 'booking.eliminar',
+        'comunicaciones.ver', 'comunicaciones.crear', 'comunicaciones.eliminar',
+        'plantillas.ver', 'plantillas.crear', 'plantillas.editar', 'plantillas.eliminar', 'plantillas.usar',
         'casos.ver', 'casos.crear', 'casos.editar', 'casos.cerrar', 'casos.archivar',
         'partes.ver', 'partes.crear', 'partes.editar', 'partes.eliminar', 'partes.revelar',
         'timeline.ver', 'timeline.crear', 'timeline.editar', 'timeline.eliminar', 'timeline.publicar',
@@ -33,5 +42,8 @@ return [
         'soporte.ver_propio', 'soporte.ver_firma', 'soporte.crear', 'soporte.responder', 'soporte.cambiar_estado',
         'onboarding.ver', 'onboarding.administrar',
     ],
-    'portal' => ['sesiones.ver', 'sesiones.revocar', 'legal.ver', 'legal.aceptar'],
+    'portal' => [
+        'perfil.ver', 'perfil.editar', 'perfil.cambiar_password',
+        'sesiones.ver', 'sesiones.revocar', 'legal.ver', 'legal.aceptar',
+    ],
 ];

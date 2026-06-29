@@ -28,3 +28,17 @@ if (!function_exists('asset')) {
     }
 }
 
+if (!function_exists('catalog_label')) {
+    /** @param list<array{codigo: string, etiqueta: string}> $items */
+    function catalog_label(array $items, mixed $code): string
+    {
+        $needle = strtoupper(trim((string) ($code ?? '')));
+        foreach ($items as $item) {
+            if (strtoupper((string) $item['codigo']) === $needle) {
+                return (string) $item['etiqueta'];
+            }
+        }
+
+        return (string) ($code ?? '');
+    }
+}

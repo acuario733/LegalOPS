@@ -8,6 +8,7 @@ use App\Core\Controller;
 use App\Core\HttpException;
 use App\Core\Request;
 use App\Core\Response;
+use App\Services\CatalogoLookupService;
 use App\Services\ExportacionService;
 use App\Services\ReporteService;
 
@@ -15,9 +16,16 @@ final class ReporteController extends Controller
 {
     public function index(Request $request): Response
     {
+        $firmaId = $this->firmaId();
+        $catalogs = $this->container->get(CatalogoLookupService::class);
+
         return $this->view('reportes/index', [
             'title' => 'Reportes',
             'reportes' => $this->container->get(ReporteService::class)->available($this->currentUser() ?? []),
+            'catalogos' => [
+                'tipo_caso' => $catalogs->items($firmaId, 'tipo_caso'),
+                'moneda' => $catalogs->items($firmaId, 'moneda'),
+            ],
             'csrfToken' => $this->csrf->token(),
             'currentUser' => $this->currentUser(),
         ]);

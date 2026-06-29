@@ -45,7 +45,7 @@ final class PortalClienteRepository extends BaseRepository
              FROM documento_permisos_portal dpp
              INNER JOIN documentos d ON d.id=dpp.documento_id AND d.firma_id=dpp.firma_id AND d.cliente_id=dpp.cliente_id
              LEFT JOIN documento_versiones v ON v.id=d.current_version_id
-             WHERE dpp.firma_id=:firma_id AND dpp.cliente_id=:cliente_id AND dpp.estado=\'autorizado\' AND d.deleted_at IS NULL
+             WHERE dpp.firma_id=:firma_id AND dpp.cliente_id=:cliente_id AND dpp.estado=\'autorizado\' AND d.visible_portal=1 AND d.deleted_at IS NULL
              ORDER BY d.updated_at DESC'
         );
         $statement->execute(['firma_id' => $firmaId, 'cliente_id' => $clienteId]);
@@ -61,7 +61,7 @@ final class PortalClienteRepository extends BaseRepository
              FROM documento_permisos_portal dpp
              INNER JOIN documentos d ON d.id=dpp.documento_id AND d.firma_id=dpp.firma_id AND d.cliente_id=dpp.cliente_id
              WHERE dpp.firma_id=:firma_id AND dpp.cliente_id=:cliente_id AND dpp.documento_id=:documento_id
-               AND dpp.estado=\'autorizado\' AND d.deleted_at IS NULL'
+               AND dpp.estado=\'autorizado\' AND d.visible_portal=1 AND d.deleted_at IS NULL'
         );
         $statement->execute(['firma_id' => $firmaId, 'cliente_id' => $clienteId, 'documento_id' => $documentId]);
         $row = $statement->fetch();
@@ -74,20 +74,45 @@ final class PortalClienteRepository extends BaseRepository
     {
         $statement = $this->pdo->prepare(
             'SELECT fpp.tipo_finanza, fpp.estado, fpp.observacion_publica,
-                    h.concepto AS honorario_concepto, h.monto AS honorario_monto,
-                    p.fecha_pago, p.monto AS pago_monto, p.metodo_pago,
-                    g.concepto AS gasto_concepto, g.monto AS gasto_monto, g.fecha_gasto
+                    h.concepto AS honorario_concepto, h.monto AS honorario_monto, h.moneda AS honorario_moneda, h.estado AS honorario_estado,
+                    p.fecha_pago, p.monto AS pago_monto, p.moneda AS pago_moneda, p.metodo_pago, p.estado AS pago_estado,
+                    g.concepto AS gasto_concepto, g.monto AS gasto_monto, g.moneda AS gasto_moneda, g.fecha_gasto, g.estado AS gasto_estado,
+                    CASE
+                        WHEN fpp.tipo_finanza=\'honorario\' THEN h.monto
+                        WHEN fpp.tipo_finanza=\'pago\' THEN -p.monto
+                        WHEN fpp.tipo_finanza=\'gasto\' THEN g.monto
+                        ELSE 0
+                    END impacto_saldo,
+                    \'saldo = honorarios_vigentes + gastos_cobrables - pagos_validos\' formula_saldo
              FROM finanza_permisos_portal fpp
              LEFT JOIN honorarios h ON h.id=fpp.honorario_id AND h.firma_id=fpp.firma_id AND h.cliente_id=fpp.cliente_id
              LEFT JOIN pagos p ON p.id=fpp.pago_id AND p.firma_id=fpp.firma_id AND p.cliente_id=fpp.cliente_id
              LEFT JOIN gastos g ON g.id=fpp.gasto_id AND g.firma_id=fpp.firma_id AND g.cliente_id=fpp.cliente_id
              WHERE fpp.firma_id=:firma_id AND fpp.cliente_id=:cliente_id AND fpp.estado=\'autorizado\'
                AND (
-                    (fpp.tipo_finanza=\'honorario\' AND h.deleted_at IS NULL)
-                 OR (fpp.tipo_finanza=\'pago\' AND p.deleted_at IS NULL)
-                 OR (fpp.tipo_finanza=\'gasto\' AND g.deleted_at IS NULL)
+                    (fpp.tipo_finanza=\'honorario\' AND h.estado IN (\'pendiente\',\'parcial\',\'pagado\') AND h.deleted_at IS NULL)
+                 OR (fpp.tipo_finanza=\'pago\' AND p.estado IN (\'registrado\') AND p.deleted_at IS NULL)
+                 OR (fpp.tipo_finanza=\'gasto\' AND g.estado IN (\'registrado\') AND g.deleted_at IS NULL)
                )
              ORDER BY fpp.updated_at DESC'
+        );
+        $statement->execute(['firma_id' => $firmaId, 'cliente_id' => $clienteId]);
+
+        return $statement->fetchAll();
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function timeline(int $firmaId, int $clienteId): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT t.id,t.caso_id,t.fecha_evento,t.tipo_evento,t.titulo,t.contenido_publico,t.critico,c.titulo AS caso_titulo
+             FROM caso_permisos_portal cpp
+             INNER JOIN casos c ON c.id=cpp.caso_id AND c.firma_id=cpp.firma_id AND c.cliente_id=cpp.cliente_id
+             INNER JOIN caso_timeline t ON t.caso_id=c.id AND t.firma_id=c.firma_id
+             WHERE cpp.firma_id=:firma_id AND cpp.cliente_id=:cliente_id AND cpp.estado=\'autorizado\'
+               AND c.deleted_at IS NULL AND t.deleted_at IS NULL AND t.visibilidad=\'publica\'
+             ORDER BY t.fecha_evento DESC,t.id DESC
+             LIMIT 20'
         );
         $statement->execute(['firma_id' => $firmaId, 'cliente_id' => $clienteId]);
 

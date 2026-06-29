@@ -47,15 +47,18 @@ final class RolService
     /** @param array<string, mixed> $data @param list<int> $permissions */
     public function create(int $firmaId, array $data, array $permissions, Request $request, bool $protected = false): int
     {
-        $this->limits->requireCapacity($firmaId, 'roles');
+        $this->limits->requireCapacity($firmaId, 'roles', $request);
         $data = $this->normalize($data) + ['is_protected' => $protected ? 1 : 0];
         if (!$this->validator->validateData($data)) {
             throw new HttpException(422, 'Revise los datos del rol.', $this->validator->errors());
         }
+        if ($this->repository->findByCode($firmaId, $data['codigo']) !== null) {
+            throw new HttpException(409, 'Ya existe un rol con ese codigo en la firma.');
+        }
 
         return $this->database->transaction(function () use ($firmaId, $data, $permissions, $request): int {
             $id = $this->repository->create($firmaId, $data);
-            $this->repository->syncPermissions($firmaId, $id, array_map('intval', $permissions));
+            $this->repository->syncPermissions($firmaId, $id, $this->repository->assignablePermissionIds(array_map('intval', $permissions)));
             $this->audit->record('ROL_CREADO', 'roles', 'rol', $id, ['codigo' => $data['codigo']], $request, $firmaId);
 
             return $id;
@@ -75,10 +78,15 @@ final class RolService
         if (!$this->validator->validateData($data)) {
             throw new HttpException(422, 'Revise los datos del rol.', $this->validator->errors());
         }
+        $duplicate = $this->repository->findByCode($firmaId, $data['codigo']);
+        if ($duplicate !== null && (int) $duplicate['id'] !== $id) {
+            throw new HttpException(409, 'Ya existe un rol con ese codigo en la firma.');
+        }
         $this->database->transaction(function () use ($firmaId, $id, $data, $permissions, $request): void {
             $this->repository->update($firmaId, $id, $data);
-            $this->repository->syncPermissions($firmaId, $id, array_map('intval', $permissions));
-            $this->audit->record('ROL_MODIFICADO', 'roles', 'rol', $id, ['codigo' => $data['codigo'], 'permisos' => array_map('intval', $permissions)], $request, $firmaId);
+            $assignable = $this->repository->assignablePermissionIds(array_map('intval', $permissions));
+            $this->repository->syncPermissions($firmaId, $id, $assignable);
+            $this->audit->record('ROL_MODIFICADO', 'roles', 'rol', $id, ['codigo' => $data['codigo'], 'permisos' => $assignable], $request, $firmaId);
         });
     }
 
@@ -88,6 +96,12 @@ final class RolService
         $user = $this->users->findForFirma($firmaId, $userId) ?? throw new HttpException(404, 'El usuario no existe en la firma.');
         if ($user['tipo'] === 'cliente_externo' && $roleIds !== []) {
             throw new HttpException(422, 'Los usuarios externos no pueden recibir roles internos.');
+        }
+        if (($user['estado'] ?? null) === 'activo'
+            && $this->users->hasRole($userId, $firmaId, 'administrador')
+            && $this->users->countActiveAdmins($firmaId) <= 1
+            && !$this->containsAdminRole($firmaId, array_map('intval', $roleIds))) {
+            throw new HttpException(409, 'No se puede dejar la firma sin un administrador activo.');
         }
         $this->database->transaction(function () use ($firmaId, $userId, $roleIds, $request): void {
             $this->repository->syncUserRoles($firmaId, $userId, array_map('intval', $roleIds));
@@ -107,5 +121,16 @@ final class RolService
             'descripcion' => trim((string) ($data['descripcion'] ?? '')),
             'estado' => (string) ($data['estado'] ?? 'activo'),
         ];
+    }
+
+    /** @param list<int> $roleIds */
+    private function containsAdminRole(int $firmaId, array $roleIds): bool
+    {
+        $adminRole = $this->repository->findByCode($firmaId, 'administrador');
+        if ($adminRole === null) {
+            return false;
+        }
+
+        return in_array((int) $adminRole['id'], array_map('intval', $roleIds), true);
     }
 }

@@ -44,6 +44,7 @@ final class CasoTimelineService
         $this->ensureCase($firmaId, $casoId);
         $normalized = $this->normalize($firmaId, $casoId, $data);
         $this->assertPublishAllowed($normalized['visibilidad']);
+        $this->assertPublicContent($normalized);
         if (!$this->validator->validateData($normalized)) {
             throw new HttpException(422, 'Revise los datos del evento.', $this->validator->errors());
         }
@@ -66,6 +67,7 @@ final class CasoTimelineService
         if ($normalized['visibilidad'] !== $before['visibilidad']) {
             $this->assertPublishAllowed($normalized['visibilidad']);
         }
+        $this->assertPublicContent($normalized);
         if (!$this->validator->validateData($normalized)) {
             throw new HttpException(422, 'Revise los datos del evento.', $this->validator->errors());
         }
@@ -85,6 +87,9 @@ final class CasoTimelineService
             throw new HttpException(422, 'La visibilidad seleccionada no es valida.', $this->validator->errors());
         }
         $this->assertPublishAllowed($visibility);
+        if ($visibility === 'publica' && trim((string) ($before['contenido_publico'] ?? '')) === '') {
+            throw new HttpException(422, 'Un evento publico requiere contenido publico.');
+        }
         $this->repository->setVisibility($firmaId, $casoId, $id, $visibility);
         $this->audit->record('TIMELINE_VISIBILIDAD_CAMBIADA', 'timeline', 'caso_timeline', $id, [
             'caso_id' => $casoId,
@@ -159,6 +164,14 @@ final class CasoTimelineService
     {
         if ($visibility === 'publica' && !$this->permissions->allows('timeline.publicar', $this->auth->user())) {
             throw new HttpException(403, 'No tiene permiso para publicar eventos en el portal.');
+        }
+    }
+
+    /** @param array<string, mixed> $data */
+    private function assertPublicContent(array $data): void
+    {
+        if ($data['visibilidad'] === 'publica' && trim((string) ($data['contenido_publico'] ?? '')) === '') {
+            throw new HttpException(422, 'Un evento publico requiere contenido publico.');
         }
     }
 

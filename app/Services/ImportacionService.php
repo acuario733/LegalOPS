@@ -8,6 +8,8 @@ use App\Core\Auth;
 use App\Core\Database;
 use App\Core\HttpException;
 use App\Core\Request;
+use App\Repositories\CasoRepository;
+use App\Repositories\ClienteRepository;
 use App\Repositories\ImportacionRepository;
 
 final class ImportacionService
@@ -20,6 +22,8 @@ final class ImportacionService
 
     public function __construct(
         private readonly ImportacionRepository $repository,
+        private readonly ClienteRepository $clienteRepository,
+        private readonly CasoRepository $casoRepository,
         private readonly ClienteService $clientes,
         private readonly CasoService $casos,
         private readonly Database $database,
@@ -46,7 +50,7 @@ final class ImportacionService
         if (!isset($this->headers[$type])) {
             throw new HttpException(422, 'Tipo de importacion no valido.');
         }
-        $this->limits->requireCapacity($firmaId, 'importaciones');
+        $this->limits->requireCapacity($firmaId, 'importaciones', $request);
         $metadata = $this->validateFile($file);
         $relative = 'imports/firma_' . $firmaId . '/' . date('Ymd_His') . '_' . $type . '_' . bin2hex(random_bytes(4)) . '.csv';
         $path = $this->storageRoot() . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
@@ -57,7 +61,7 @@ final class ImportacionService
         $this->storeFile((string) $file['tmp_name'], $path);
 
         try {
-            $preview = $this->parse($path, $type);
+            $preview = $this->parse($firmaId, $path, $type);
             $id = $this->repository->create([
                 'firma_id' => $firmaId,
                 'usuario_id' => $this->auth->id(),
@@ -98,7 +102,7 @@ final class ImportacionService
             throw new HttpException(409, 'La importacion expiro.');
         }
         $path = $this->resolveStoredPath((string) $import['archivo_path']);
-        $preview = $this->parse($path, (string) $import['tipo']);
+        $preview = $this->parse($firmaId, $path, (string) $import['tipo']);
         if ($preview['errores'] !== []) {
             throw new HttpException(422, 'La importacion tiene errores pendientes.', ['rows' => $preview['errores']]);
         }
@@ -150,7 +154,7 @@ final class ImportacionService
     }
 
     /** @return array{headers: list<string>, rows: list<array<string, string>>, errores: list<array<string, mixed>>, total: int, validas: int} */
-    private function parse(string $path, string $type): array
+    private function parse(int $firmaId, string $path, string $type): array
     {
         if (!is_file($path)) {
             throw new HttpException(404, 'El archivo temporal no esta disponible.');
@@ -172,6 +176,8 @@ final class ImportacionService
 
         $rows = [];
         $errors = [];
+        $seenDocuments = [];
+        $seenRadicados = [];
         $line = 1;
         while (($values = fgetcsv($handle)) !== false) {
             $line++;
@@ -195,11 +201,97 @@ final class ImportacionService
                 $errors[] = ['fila' => $line, 'error' => 'Campos obligatorios vacios.'];
                 continue;
             }
+            foreach ($this->rowErrors($firmaId, $type, $row, $line, $seenDocuments, $seenRadicados) as $error) {
+                $errors[] = $error;
+            }
+            if ($this->rowHasErrors($errors, $line)) {
+                continue;
+            }
             $rows[] = $row;
         }
         fclose($handle);
 
         return ['headers' => $headers, 'rows' => $rows, 'errores' => $errors, 'total' => count($rows) + count($errors), 'validas' => count($rows)];
+    }
+
+    /**
+     * @param array<string, string> $row
+     * @param array<string, int> $seenDocuments
+     * @param array<string, int> $seenRadicados
+     * @return list<array<string, mixed>>
+     */
+    private function rowErrors(int $firmaId, string $type, array $row, int $line, array &$seenDocuments, array &$seenRadicados): array
+    {
+        if ($type === 'clientes') {
+            return $this->clientRowErrors($firmaId, $row, $line, $seenDocuments);
+        }
+        if ($type === 'casos') {
+            return $this->caseRowErrors($firmaId, $row, $line, $seenRadicados);
+        }
+
+        return [];
+    }
+
+    /** @param list<array<string, mixed>> $errors */
+    private function rowHasErrors(array $errors, int $line): bool
+    {
+        foreach ($errors as $error) {
+            if ((int) ($error['fila'] ?? 0) === $line) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param array<string, string> $row @param array<string, int> $seenDocuments @return list<array<string, mixed>> */
+    private function clientRowErrors(int $firmaId, array $row, int $line, array &$seenDocuments): array
+    {
+        $errors = [];
+        $document = $this->normalizeDocument((string) ($row['numero_documento'] ?? ''));
+        if ($document === '') {
+            return $errors;
+        }
+        if (isset($seenDocuments[$document])) {
+            $errors[] = ['fila' => $line, 'error' => 'Documento duplicado en CSV; ya aparece en fila ' . $seenDocuments[$document] . '.'];
+        } else {
+            $seenDocuments[$document] = $line;
+        }
+        if ($this->clienteRepository->documentHashExists($firmaId, hash('sha256', $document))) {
+            $errors[] = ['fila' => $line, 'error' => 'Ya existe un cliente activo con ese documento en la firma.'];
+        }
+
+        return $errors;
+    }
+
+    /** @param array<string, string> $row @param array<string, int> $seenRadicados @return list<array<string, mixed>> */
+    private function caseRowErrors(int $firmaId, array $row, int $line, array &$seenRadicados): array
+    {
+        $errors = [];
+        $clienteId = filter_var($row['cliente_id'] ?? null, FILTER_VALIDATE_INT);
+        if ($clienteId === false || $this->clienteRepository->findForFirma($firmaId, (int) $clienteId) === null) {
+            $errors[] = ['fila' => $line, 'error' => 'El cliente indicado no existe en la firma.'];
+        }
+        $radicado = trim((string) ($row['radicado'] ?? ''));
+        if ($radicado === '') {
+            return $errors;
+        }
+        $radicadoKey = mb_strtolower($radicado);
+        if (isset($seenRadicados[$radicadoKey])) {
+            $errors[] = ['fila' => $line, 'error' => 'Radicado duplicado en CSV; ya aparece en fila ' . $seenRadicados[$radicadoKey] . '.'];
+        } else {
+            $seenRadicados[$radicadoKey] = $line;
+        }
+        if ($this->casoRepository->radicadoExists($firmaId, $radicado)) {
+            $errors[] = ['fila' => $line, 'error' => 'Ya existe un caso activo con ese radicado en la firma.'];
+        }
+
+        return $errors;
+    }
+
+    private function normalizeDocument(string $value): string
+    {
+        return preg_replace('/[^A-Za-z0-9]/', '', mb_strtoupper($value)) ?? '';
     }
 
     private function storeFile(string $tmp, string $target): void

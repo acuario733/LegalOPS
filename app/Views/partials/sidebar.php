@@ -33,11 +33,14 @@ $can = static fn (string $permission): bool => in_array('*', $permissions, true)
                     <?php if ($can('roles.ver')): ?><li class="nav-item"><a href="/roles" class="nav-link"><i class="nav-icon bi bi-person-badge"></i><p>Roles</p></a></li><?php endif; ?>
                     <?php if ($can('clientes.ver')): ?><li class="nav-item"><a href="/clientes" class="nav-link"><i class="nav-icon bi bi-person-lines-fill"></i><p>Clientes</p></a></li><?php endif; ?>
                     <?php if ($can('prospectos.ver')): ?><li class="nav-item"><a href="/prospectos" class="nav-link"><i class="nav-icon bi bi-funnel"></i><p>Prospectos</p></a></li><?php endif; ?>
+                    <?php if ($can('intake.ver')): ?><li class="nav-item"><a href="/intake" class="nav-link"><i class="nav-icon bi bi-ui-checks"></i><p>Formularios Intake</p></a></li><?php endif; ?>
+                    <?php if ($can('booking.ver')): ?><li class="nav-item"><a href="/booking" class="nav-link"><i class="nav-icon bi bi-calendar2-check"></i><p>Reserva de citas</p></a></li><?php endif; ?>
                     <?php if ($can('casos.ver')): ?><li class="nav-item"><a href="/casos" class="nav-link"><i class="nav-icon bi bi-briefcase"></i><p>Casos</p></a></li><?php endif; ?>
                     <?php if ($can('terminos.ver')): ?><li class="nav-item"><a href="/terminos" class="nav-link"><i class="nav-icon bi bi-clock-history"></i><p>Terminos</p></a></li><?php endif; ?>
                     <?php if ($can('audiencias.ver')): ?><li class="nav-item"><a href="/audiencias" class="nav-link"><i class="nav-icon bi bi-calendar-event"></i><p>Audiencias</p></a></li><?php endif; ?>
                     <?php if ($can('tareas.ver')): ?><li class="nav-item"><a href="/tareas" class="nav-link"><i class="nav-icon bi bi-list-task"></i><p>Tareas</p></a></li><?php endif; ?>
                     <?php if ($can('documentos.ver')): ?><li class="nav-item"><a href="/documentos" class="nav-link"><i class="nav-icon bi bi-folder2-open"></i><p>Documentos</p></a></li><?php endif; ?>
+                    <?php if ($can('plantillas.ver')): ?><li class="nav-item"><a href="/plantillas" class="nav-link"><i class="nav-icon bi bi-file-earmark-richtext"></i><p>Plantillas</p></a></li><?php endif; ?>
                     <?php if ($can('portal.autorizar')): ?><li class="nav-item"><a href="/portal-autorizaciones" class="nav-link"><i class="nav-icon bi bi-person-check"></i><p>Portal cliente</p></a></li><?php endif; ?>
                     <?php if ($can('finanzas.ver')): ?><li class="nav-item"><a href="/finanzas/honorarios" class="nav-link"><i class="nav-icon bi bi-cash-coin"></i><p>Honorarios</p></a></li><?php endif; ?>
                     <?php if ($can('finanzas.ver')): ?><li class="nav-item"><a href="/finanzas/pagos" class="nav-link"><i class="nav-icon bi bi-credit-card"></i><p>Pagos</p></a></li><?php endif; ?>

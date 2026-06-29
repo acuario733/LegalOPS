@@ -90,6 +90,24 @@ final class Response
         return $response;
     }
 
+    public static function file(string $path, string $mime = 'application/octet-stream'): self
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            throw new HttpException(404, 'El archivo solicitado no está disponible.');
+        }
+
+        $response = new self('', 200, [
+            'Content-Type' => $mime,
+            'Content-Length' => (string) filesize($path),
+            'Content-Disposition' => 'inline',
+            'Cache-Control' => 'private, max-age=300',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+        $response->filePath = $path;
+
+        return $response;
+    }
+
     public function withHeader(string $name, string $value): self
     {
         if (str_contains($name, "\r") || str_contains($name, "\n") || str_contains($value, "\r") || str_contains($value, "\n")) {
@@ -138,4 +156,3 @@ final class Response
         $this->sent = true;
     }
 }
-

@@ -16,6 +16,7 @@ use App\Controllers\NotificacionController;
 use App\Controllers\PortalAutorizacionController;
 use App\Controllers\ProspectoController;
 use App\Controllers\SaldoController;
+use App\Controllers\SearchController;
 use App\Controllers\TareaController;
 use App\Controllers\TerminoController;
 use App\Core\Config;
@@ -25,6 +26,9 @@ return static function (Router $router): void {
     $router->get('/api/health', [HealthController::class, 'api']);
     $router->post('/api/health', [HealthController::class, 'post']);
 
+    // Métricas detalladas — solo acceso interno (IP whitelist recomendada en nginx/apache)
+    $router->get('/api/health/metrics', [HealthController::class, 'metrics'], ['internal']);
+
     if (Config::get('app.environment') === 'development') {
         $router->get('/api/health/error', [HealthController::class, 'controlledError']);
     }
@@ -32,6 +36,16 @@ return static function (Router $router): void {
     $router->group('/api', ['auth', 'firma', 'commercial', 'internal'], static function (Router $router): void {
         $router->get('/dashboard', [DashboardController::class, 'api']);
         $router->get('/notificaciones', [NotificacionController::class, 'search'], ['permission:notificaciones.ver']);
+        $router->get('/select/clientes', [SearchController::class, 'clientes'], ['permission:clientes.ver']);
+        $router->get('/select/casos', [SearchController::class, 'casos'], ['permission:casos.ver']);
+        $router->get('/select/usuarios', [SearchController::class, 'usuarios'], ['permission:usuarios.ver']);
+        $router->get('/select/usuarios-externos', [SearchController::class, 'usuariosExternos'], ['permission:portal.autorizar']);
+        $router->get('/select/tareas', [SearchController::class, 'tareas'], ['permission:tareas.ver']);
+        $router->get('/select/terminos', [SearchController::class, 'terminos'], ['permission:terminos.ver']);
+        $router->get('/select/honorarios', [SearchController::class, 'honorarios'], ['permission:finanzas.ver']);
+        $router->get('/select/documentos', [SearchController::class, 'documentos'], ['permission:documentos.ver']);
+        $router->get('/select/pagos', [SearchController::class, 'pagos'], ['permission:finanzas.ver']);
+        $router->get('/select/gastos', [SearchController::class, 'gastos'], ['permission:finanzas.ver']);
         $router->get('/clientes', [ClienteController::class, 'search'], ['permission:clientes.ver']);
         $router->get('/clientes/{id}', [ClienteController::class, 'detail'], ['permission:clientes.ver']);
         $router->get('/prospectos', [ProspectoController::class, 'search'], ['permission:prospectos.ver']);

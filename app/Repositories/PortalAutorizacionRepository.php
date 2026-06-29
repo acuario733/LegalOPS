@@ -11,9 +11,38 @@ final class PortalAutorizacionRepository extends BaseRepository
     {
         $items = [];
         foreach ([
-            'caso' => 'SELECT cpp.id, \'caso\' tipo, cpp.caso_id recurso_id, c.titulo nombre, cpp.estado, cpp.observacion_publica FROM caso_permisos_portal cpp INNER JOIN casos c ON c.id=cpp.caso_id AND c.firma_id=cpp.firma_id WHERE cpp.firma_id=:firma_id AND cpp.cliente_id=:cliente_id',
-            'documento' => 'SELECT dpp.id, \'documento\' tipo, dpp.documento_id recurso_id, d.titulo nombre, dpp.estado, dpp.observacion_publica FROM documento_permisos_portal dpp INNER JOIN documentos d ON d.id=dpp.documento_id AND d.firma_id=dpp.firma_id WHERE dpp.firma_id=:firma_id AND dpp.cliente_id=:cliente_id',
-            'finanza' => 'SELECT fpp.id, fpp.tipo_finanza tipo, COALESCE(fpp.honorario_id,fpp.pago_id,fpp.gasto_id) recurso_id, fpp.tipo_finanza nombre, fpp.estado, fpp.observacion_publica FROM finanza_permisos_portal fpp WHERE fpp.firma_id=:firma_id AND fpp.cliente_id=:cliente_id',
+            'SELECT cpp.id, \'caso\' tipo, cpp.caso_id recurso_id, c.titulo nombre, CONCAT(\'/casos/\', cpp.caso_id) url, cpp.estado, cpp.observacion_publica
+             FROM caso_permisos_portal cpp
+             INNER JOIN casos c ON c.id=cpp.caso_id AND c.firma_id=cpp.firma_id
+             WHERE cpp.firma_id=:firma_id AND cpp.cliente_id=:cliente_id',
+            'SELECT dpp.id, \'documento\' tipo, dpp.documento_id recurso_id, d.titulo nombre, CONCAT(\'/documentos/\', dpp.documento_id) url, dpp.estado, dpp.observacion_publica
+             FROM documento_permisos_portal dpp
+             INNER JOIN documentos d ON d.id=dpp.documento_id AND d.firma_id=dpp.firma_id
+             WHERE dpp.firma_id=:firma_id AND dpp.cliente_id=:cliente_id',
+            'SELECT fpp.id, fpp.tipo_finanza tipo, COALESCE(fpp.honorario_id,fpp.pago_id,fpp.gasto_id) recurso_id,
+                    CASE
+                        WHEN fpp.tipo_finanza=\'honorario\' THEN COALESCE(h.concepto, \'Honorario\')
+                        WHEN fpp.tipo_finanza=\'pago\' THEN CONCAT(\'Pago \', COALESCE(p.fecha_pago, \'\'))
+                        WHEN fpp.tipo_finanza=\'gasto\' THEN COALESCE(g.concepto, \'Gasto\')
+                        ELSE fpp.tipo_finanza
+                    END nombre,
+                    CASE
+                        WHEN fpp.tipo_finanza=\'honorario\' THEN CONCAT(\'/finanzas/honorarios?cliente_id=\', fpp.cliente_id)
+                        WHEN fpp.tipo_finanza=\'pago\' THEN CONCAT(\'/finanzas/pagos?cliente_id=\', fpp.cliente_id)
+                        WHEN fpp.tipo_finanza=\'gasto\' THEN CONCAT(\'/finanzas/gastos?cliente_id=\', fpp.cliente_id)
+                        ELSE NULL
+                    END url,
+                    fpp.estado, fpp.observacion_publica
+             FROM finanza_permisos_portal fpp
+             LEFT JOIN honorarios h ON h.id=fpp.honorario_id AND h.firma_id=fpp.firma_id
+             LEFT JOIN pagos p ON p.id=fpp.pago_id AND p.firma_id=fpp.firma_id
+             LEFT JOIN gastos g ON g.id=fpp.gasto_id AND g.firma_id=fpp.firma_id
+             WHERE fpp.firma_id=:firma_id AND fpp.cliente_id=:cliente_id',
+            'SELECT puc.usuario_id id, \'usuario_cliente\' tipo, puc.usuario_id recurso_id, CONCAT(u.nombre, \' - \', u.email) nombre, CONCAT(\'/usuarios?tipo=cliente_externo&usuario_id=\', puc.usuario_id) url,
+                    CASE WHEN puc.estado=\'activo\' THEN \'autorizado\' ELSE \'revocado\' END estado, NULL observacion_publica
+             FROM portal_usuario_clientes puc
+             INNER JOIN usuarios u ON u.id=puc.usuario_id AND u.firma_id=puc.firma_id
+             WHERE puc.firma_id=:firma_id AND puc.cliente_id=:cliente_id',
         ] as $sql) {
             $statement = $this->pdo->prepare($sql);
             $statement->execute(['firma_id' => $firmaId, 'cliente_id' => $clienteId]);

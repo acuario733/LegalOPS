@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace App\Core;
 
+use App\Monitoring\ErrorReporter;
 use ErrorException;
 use PDOException;
 use Throwable;
 
 final class ErrorHandler
 {
-    public function __construct(private readonly string $logPath)
-    {
-    }
+    public function __construct(
+        private readonly string $logPath,
+        private readonly ?ErrorReporter $reporter = null,
+    ) {}
+
 
     public function register(): void
     {
@@ -45,6 +48,7 @@ final class ErrorHandler
     {
         $correlationId = bin2hex(random_bytes(8));
         $this->writeLog($exception, $request, $correlationId);
+        $this->reporter?->report($exception, $correlationId, $request->uri());
 
         $status = $exception instanceof HttpException ? $exception->status() : 500;
         $message = $exception instanceof HttpException

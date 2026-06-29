@@ -29,6 +29,7 @@ final class PortalClienteService
         return [
             'cliente' => $client,
             'casos' => $this->repository->cases($firmaId, (int) $client['id']),
+            'timeline' => $this->repository->timeline($firmaId, (int) $client['id']),
             'documentos' => $this->repository->documents($firmaId, (int) $client['id']),
             'finanzas' => $this->repository->finances($firmaId, (int) $client['id']),
             'pendientes_legales' => $this->legal->pending(),

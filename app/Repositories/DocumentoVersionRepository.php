@@ -64,7 +64,7 @@ final class DocumentoVersionRepository extends BaseRepository
             'INSERT INTO documento_versiones
             (firma_id,documento_id,version_numero,nombre_original,nombre_fisico,extension,mime_declarado,mime_detectado,size_bytes,checksum_sha256,storage_path,uploaded_by_usuario_id,created_at)
              VALUES
-            (:firma_id,:documento_id,:version_numero,:nombre_original,:nombre_fisico,:extension,:mime_declarado,:mime_detectado,:size_bytes,:checksum_sha256,:storage_path,:uploaded_by_usuario_id,CURRENT_TIMESTAMP(6))'
+            (:firma_id,:documento_id,:version_numero,:nombre_original,:nombre_fisico,:extension,:mime_declarado,:mime_detectado,:size_bytes,:checksum_sha256,:storage_path,:uploaded_by_usuario_id,CURRENT_TIMESTAMP)'
         );
         $statement->execute($data);
 

@@ -127,4 +127,69 @@ final class ProspectoRepository extends BaseRepository
         );
         $statement->execute(['cliente_id' => $clienteId, 'id' => $id, 'firma_id' => $firmaId]);
     }
+
+    /** @return array<string, mixed>|null */
+    public function findByEmailForFirma(int $firmaId, string $email): ?array
+    {
+        // TENANT FILTER
+        $statement = $this->pdo->prepare(
+            'SELECT * FROM prospectos
+             WHERE firma_id=:firma_id AND email=:email AND deleted_at IS NULL
+             ORDER BY id DESC LIMIT 1'
+        );
+        $statement->execute(['firma_id' => $firmaId, 'email' => strtolower(trim($email))]);
+        $row = $statement->fetch();
+
+        return is_array($row) ? $row : null;
+    }
+
+    /** @param array<string, mixed> $data */
+    public function createFromPublicSource(array $data): int
+    {
+        // TENANT FILTER: firma_id is mandatory in the inserted prospect.
+        $statement = $this->pdo->prepare(
+            'INSERT INTO prospectos
+                (firma_id,nombre,nombre_normalizado,tipo_persona,email,telefono,fuente,
+                 fuente_referencia,estado,notas,tratamiento_datos_autorizado,created_at,updated_at)
+             VALUES
+                (:firma_id,:nombre,:nombre_normalizado,\'natural\',:email,:telefono,:fuente,
+                 :fuente_referencia,\'nuevo\',:notas,:tratamiento_datos_autorizado,
+                 CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)'
+        );
+        $statement->execute($data);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    public function updateFromPublicSource(
+        int $id,
+        int $firmaId,
+        string $name,
+        ?string $phone,
+        string $source,
+        string $reference,
+        ?string $notes
+    ): bool {
+        // TENANT FILTER
+        $statement = $this->pdo->prepare(
+            'UPDATE prospectos
+             SET nombre=:nombre,nombre_normalizado=:nombre_normalizado,
+                 telefono=COALESCE(:telefono,telefono),fuente=:fuente,
+                 fuente_referencia=:fuente_referencia,notas=COALESCE(:notas,notas),
+                 updated_at=CURRENT_TIMESTAMP
+             WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
+        );
+        $statement->execute([
+            'nombre' => $name,
+            'nombre_normalizado' => mb_strtolower(trim($name)),
+            'telefono' => $phone,
+            'fuente' => $source,
+            'fuente_referencia' => $reference,
+            'notas' => $notes,
+            'id' => $id,
+            'firma_id' => $firmaId,
+        ]);
+
+        return $statement->rowCount() > 0;
+    }
 }

@@ -21,7 +21,13 @@ $csrf = isset($csrfToken) ? (string) $csrfToken : '';
 <body class="layout-top-nav bg-body-tertiary">
 <div class="app-wrapper">
     <nav class="app-header navbar navbar-expand bg-body shadow-sm">
-        <div class="container"><a class="navbar-brand fw-semibold" href="/"><span class="legalops-brand-mark me-2">L</span>Portal LegalOPS</a></div>
+        <div class="container">
+            <a class="navbar-brand fw-semibold" href="/portal"><span class="legalops-brand-mark me-2">L</span>Portal LegalOPS</a>
+            <div class="d-flex align-items-center gap-2">
+                <a class="btn btn-sm btn-outline-primary" href="/mi-perfil"><i class="bi bi-person-circle me-1"></i>Mi perfil</a>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-action="/logout" data-redirect="/login"><i class="bi bi-box-arrow-right me-1"></i>Salir</button>
+            </div>
+        </div>
     </nav>
     <main class="app-main"><div class="app-content py-4"><div class="container"><?= $content ?></div></div></main>
     <?= $this->partial('footer') ?>

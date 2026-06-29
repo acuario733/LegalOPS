@@ -8,7 +8,10 @@ use App\Repositories\DashboardRepository;
 
 final class DashboardService
 {
-    public function __construct(private readonly DashboardRepository $repository)
+    public function __construct(
+        private readonly DashboardRepository $repository,
+        private readonly SaldoService $saldos
+    )
     {
     }
 
@@ -38,15 +41,21 @@ final class DashboardService
         return [
             'cards' => $cards,
             'documentos_recientes' => $can('documentos.ver') ? $this->repository->recentDocuments($firmaId) : null,
-            'finanzas' => $can('finanzas.ver') ? $this->withBalance($this->repository->financeSummary($firmaId)) : null,
+            'finanzas' => $can('finanzas.ver') ? $this->dashboardFinance($firmaId) : null,
         ];
     }
 
-    /** @param array<string, float> $summary @return array<string, float> */
-    private function withBalance(array $summary): array
+    /** @return array<string, mixed> */
+    private function dashboardFinance(int $firmaId): array
     {
-        $summary['saldo'] = $summary['honorarios'] + $summary['gastos'] - $summary['pagos'];
+        $summary = $this->saldos->resumen($firmaId);
 
-        return $summary;
+        return [
+            'honorarios' => (float) $summary['total_honorarios'],
+            'pagos' => (float) $summary['total_pagos'],
+            'gastos' => (float) $summary['total_gastos'],
+            'saldo' => (float) $summary['saldo'],
+            'formula' => $summary['formula'] ?? $this->saldos->formula(),
+        ];
     }
 }

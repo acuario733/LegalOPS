@@ -6,6 +6,9 @@ namespace App\Repositories;
 
 final class RolRepository extends BaseRepository
 {
+    private const ASSIGNABLE_PERMISSION_FILTER = 'modulo NOT IN (\'firmas\',\'planes\',\'limites\',\'checklist\')
+               AND codigo NOT IN (\'legal.administrar\',\'soporte.ver_global\')';
+
     /** @return list<array<string, mixed>> */
     public function allForFirma(int $firmaId): array
     {
@@ -65,7 +68,31 @@ final class RolRepository extends BaseRepository
     /** @return list<array<string, mixed>> */
     public function permissions(): array
     {
-        return $this->pdo->query('SELECT id,codigo,modulo,accion,descripcion FROM permisos ORDER BY modulo,accion')->fetchAll();
+        return $this->pdo->query(
+            'SELECT id,codigo,modulo,accion,descripcion
+             FROM permisos
+             WHERE ' . self::ASSIGNABLE_PERMISSION_FILTER . '
+             ORDER BY modulo,accion'
+        )->fetchAll();
+    }
+
+    /** @param list<int> $permissionIds @return list<int> */
+    public function assignablePermissionIds(array $permissionIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $permissionIds), static fn (int $id): bool => $id > 0)));
+        if ($ids === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $statement = $this->pdo->prepare(
+            'SELECT id
+             FROM permisos
+             WHERE id IN (' . $placeholders . ')
+               AND ' . self::ASSIGNABLE_PERMISSION_FILTER
+        );
+        $statement->execute($ids);
+
+        return array_map('intval', $statement->fetchAll(\PDO::FETCH_COLUMN));
     }
 
     /** @return list<int> */

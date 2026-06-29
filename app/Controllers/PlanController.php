@@ -40,7 +40,12 @@ final class PlanController extends Controller
 
     public function assign(Request $request): Response
     {
-        $this->container->get(PlanService::class)->assign((int) $request->input('firma_id'), (int) $request->input('plan_id'), $request);
+        $this->container->get(PlanService::class)->assign(
+            (int) $request->input('firma_id'),
+            (int) $request->input('plan_id'),
+            (array) $request->input(),
+            $request
+        );
 
         return $this->json(null, 'Plan asignado correctamente.');
     }
@@ -60,4 +65,3 @@ final class PlanController extends Controller
         return $this->json(null, 'Excepción de límite actualizada.');
     }
 }
-

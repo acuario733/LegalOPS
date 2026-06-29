@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Core\Auth;
 use App\Core\HttpException;
+use App\Core\Permission;
 use App\Core\Request;
 use App\Repositories\CasoParteRepository;
 use App\Repositories\CasoRepository;
@@ -24,7 +26,10 @@ final class CasoParteService
         private readonly CasoParteRepository $repository,
         private readonly CasoRepository $casos,
         private readonly CasoParteValidator $validator,
-        private readonly AuditoriaService $audit
+        private readonly AuditoriaService $audit,
+        private readonly Auth $auth,
+        private readonly Permission $permissions,
+        private readonly CatalogoLookupService $catalogs
     ) {
     }
 
@@ -90,6 +95,9 @@ final class CasoParteService
     /** @return array{campo: string, etiqueta: string, valor: string} */
     public function reveal(int $firmaId, int $casoId, int $id, string $field, Request $request): array
     {
+        if (!$this->permissions->allows('partes.revelar', $this->auth->user())) {
+            throw new HttpException(403, 'No tiene permiso para revelar datos sensibles de la parte.');
+        }
         $data = ['campo' => $field];
         if (!$this->validator->validateReveal($data)) {
             throw new HttpException(422, 'El dato solicitado no es valido.', $this->validator->errors());
@@ -132,7 +140,7 @@ final class CasoParteService
             'tipo_parte' => (string) ($data['tipo_parte'] ?? ($before['tipo_parte'] ?? 'otro')),
             'nombre' => mb_substr($name, 0, 180),
             'nombre_normalizado' => $this->normalizeText($name, 180),
-            'tipo_documento' => $this->nullableString($data['tipo_documento'] ?? ($before['tipo_documento'] ?? null), 40),
+            'tipo_documento' => $this->catalogs->normalizeOptional($firmaId, 'tipo_documento', $data['tipo_documento'] ?? ($before['tipo_documento'] ?? null), 'Tipo de documento'),
             'numero_documento' => $this->nullableString($document, 80),
             'documento_hash' => $documentNormalized === '' ? null : hash('sha256', mb_substr($documentNormalized, 0, 80)),
             'email' => $this->nullableString($this->sensitiveValue('email', $data, $before), 254, true),

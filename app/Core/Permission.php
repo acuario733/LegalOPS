@@ -8,6 +8,13 @@ use Closure;
 
 final class Permission
 {
+    /** @var list<string> */
+    private const AUTHENTICATED_SELF_SERVICE = [
+        'perfil.ver',
+        'perfil.editar',
+        'perfil.cambiar_password',
+    ];
+
     private ?Closure $resolver;
 
     public function __construct(?callable $resolver = null)
@@ -20,6 +27,10 @@ final class Permission
     {
         if ($user === null) {
             return false;
+        }
+
+        if (isset($user['id']) && in_array($permission, self::AUTHENTICATED_SELF_SERVICE, true)) {
+            return true;
         }
 
         $permissions = $this->all($user);
@@ -62,4 +73,3 @@ final class Permission
         return array_values(array_unique($normalized));
     }
 }
-

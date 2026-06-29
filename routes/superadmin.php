@@ -17,6 +17,8 @@ return static function (Router $router): void {
         $router->get('/firmas', [FirmaController::class, 'index'], ['permission:firmas.ver']);
         $router->post('/firmas', [FirmaController::class, 'store'], ['permission:firmas.crear']);
         $router->patch('/firmas/{id}', [FirmaController::class, 'update'], ['permission:firmas.editar']);
+        $router->post('/firmas/{id}/facturacion', [FirmaController::class, 'billing'], ['permission:firmas.editar']);
+        $router->post('/firmas/suspensiones-automaticas', [FirmaController::class, 'automaticSuspensions'], ['permission:firmas.suspender']);
         $router->post('/firmas/{id}/suspender', [FirmaController::class, 'suspend'], ['permission:firmas.suspender']);
         $router->post('/firmas/{id}/reactivar', [FirmaController::class, 'reactivate'], ['permission:firmas.reactivar']);
         $router->get('/firmas/{id}/uso', [FirmaController::class, 'usage'], ['permission:firmas.ver']);

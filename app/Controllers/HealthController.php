@@ -9,6 +9,7 @@ use App\Core\Controller;
 use App\Core\Database;
 use App\Core\Request;
 use App\Core\Response;
+use App\Monitoring\MetricsCollector;
 use RuntimeException;
 use Throwable;
 
@@ -43,6 +44,30 @@ final class HealthController extends Controller
     public function post(Request $request): Response
     {
         return $this->json(['status' => 'ok'], 'Token CSRF validado correctamente.');
+    }
+
+    /**
+     * GET /api/health/metrics — Estado detallado del sistema (solo acceso interno).
+     *
+     * Devuelve: estado de BD, disco, errores recientes, memoria PHP.
+     * HTTP 200 si ok, 503 si degraded/down.
+     */
+    public function metrics(Request $request): Response
+    {
+        $basePath   = dirname(__DIR__, 2);
+        $logPath    = $basePath . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'errors.log';
+        $storage    = $basePath . DIRECTORY_SEPARATOR . 'storage';
+
+        $collector = new MetricsCollector(
+            pdo:         $this->container->get(\PDO::class),
+            logPath:     $logPath,
+            storagePath: $storage,
+        );
+
+        $data       = $collector->collect();
+        $httpStatus = $data['status'] === 'ok' ? 200 : 503;
+
+        return $this->json($data, "Sistema: {$data['status']}", $httpStatus);
     }
 
     public function controlledError(Request $request): Response

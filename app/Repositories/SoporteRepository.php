@@ -8,6 +8,20 @@ use PDO;
 
 final class SoporteRepository extends BaseRepository
 {
+    private const SLA_SELECT = '
+        DATE_ADD(t.created_at, INTERVAL CASE t.prioridad
+            WHEN \'critica\' THEN 2
+            WHEN \'alta\' THEN 4
+            WHEN \'media\' THEN 8
+            ELSE 24
+        END HOUR) AS primera_respuesta_due_at,
+        DATE_ADD(t.created_at, INTERVAL CASE t.prioridad
+            WHEN \'critica\' THEN 24
+            WHEN \'alta\' THEN 48
+            WHEN \'media\' THEN 72
+            ELSE 120
+        END HOUR) AS solucion_due_at';
+
     /** @return array{items: list<array<string, mixed>>, total: int} */
     public function paginate(int $firmaId, ?int $usuarioId, bool $firmaScope, int $page = 1, int $perPage = 25): array
     {
@@ -22,7 +36,7 @@ final class SoporteRepository extends BaseRepository
         $count->execute($params);
         $offset = max(0, ($page - 1) * $perPage);
         $query = $this->pdo->prepare(
-            'SELECT t.*, u.nombre AS creado_por_nombre
+            'SELECT t.*, u.nombre AS creado_por_nombre, ' . self::SLA_SELECT . '
              FROM tickets_soporte t
              LEFT JOIN usuarios u ON u.id=t.creado_por_usuario_id AND u.firma_id=t.firma_id' . $sqlWhere . '
              ORDER BY FIELD(t.estado,\'abierto\',\'en_proceso\',\'esperando_cliente\',\'cerrado\'), t.updated_at DESC
@@ -42,7 +56,7 @@ final class SoporteRepository extends BaseRepository
     public function globalQueue(): array
     {
         return $this->pdo->query(
-            'SELECT t.*, f.nombre AS firma_nombre, u.nombre AS creado_por_nombre
+            'SELECT t.*, f.nombre AS firma_nombre, u.nombre AS creado_por_nombre, ' . self::SLA_SELECT . '
              FROM tickets_soporte t
              INNER JOIN firmas f ON f.id=t.firma_id
              LEFT JOIN usuarios u ON u.id=t.creado_por_usuario_id AND u.firma_id=t.firma_id
@@ -55,7 +69,7 @@ final class SoporteRepository extends BaseRepository
     /** @return array<string, mixed>|null */
     public function findForFirma(int $firmaId, int $id): ?array
     {
-        $statement = $this->pdo->prepare('SELECT * FROM tickets_soporte WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL');
+        $statement = $this->pdo->prepare('SELECT t.*, ' . self::SLA_SELECT . ' FROM tickets_soporte t WHERE t.id=:id AND t.firma_id=:firma_id AND t.deleted_at IS NULL');
         $statement->execute(['id' => $id, 'firma_id' => $firmaId]);
         $row = $statement->fetch();
 

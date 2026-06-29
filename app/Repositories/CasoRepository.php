@@ -82,6 +82,39 @@ final class CasoRepository extends BaseRepository
         return (int) $statement->fetchColumn() > 0;
     }
 
+    /** @return list<array<string, mixed>> */
+    public function searchForSelect(int $firmaId, string $query, ?int $clienteId = null, int $limit = 20): array
+    {
+        $where = ['c.firma_id=:firma_id', 'c.deleted_at IS NULL'];
+        $params = ['firma_id' => $firmaId];
+        if ($clienteId !== null) {
+            $where[] = 'c.cliente_id=:cliente_id';
+            $params['cliente_id'] = $clienteId;
+        }
+        $normalized = $this->normalizeText($query, 180);
+        $raw = mb_substr(trim($query), 0, 180);
+        if ($normalized !== '' || $raw !== '') {
+            $where[] = '(c.titulo_normalizado LIKE :q OR c.radicado LIKE :raw OR cl.nombre_normalizado LIKE :q OR CAST(c.id AS CHAR) LIKE :raw)';
+            $params['q'] = '%' . $normalized . '%';
+            $params['raw'] = '%' . $raw . '%';
+        }
+        $statement = $this->pdo->prepare(
+            'SELECT c.id,c.cliente_id,c.titulo,c.radicado,cl.nombre_razon_social AS cliente_nombre
+             FROM casos c
+             INNER JOIN clientes cl ON cl.id=c.cliente_id AND cl.firma_id=c.firma_id
+             WHERE ' . implode(' AND ', $where) . '
+             ORDER BY c.updated_at DESC, c.id DESC
+             LIMIT :limit'
+        );
+        foreach ($params as $key => $value) {
+            $statement->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $statement->bindValue(':limit', max(1, min(50, $limit)), PDO::PARAM_INT);
+        $statement->execute();
+
+        return $statement->fetchAll();
+    }
+
     /** @param array<string, mixed> $data */
     public function create(array $data): int
     {
@@ -132,5 +165,22 @@ final class CasoRepository extends BaseRepository
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
         $statement->execute(['usuario_id' => $userId, 'motivo' => $reason, 'id' => $id, 'firma_id' => $firmaId]);
+    }
+
+    public function reopen(int $firmaId, int $id): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE casos
+             SET estado=\'activo\', updated_at=CURRENT_TIMESTAMP(6)
+             WHERE id=:id AND firma_id=:firma_id AND estado IN (\'cerrado\',\'archivado\') AND deleted_at IS NULL'
+        );
+        $statement->execute(['id' => $id, 'firma_id' => $firmaId]);
+    }
+
+    private function normalizeText(string $value, int $max): string
+    {
+        $value = preg_replace('/\s+/', ' ', mb_strtolower(trim($value))) ?? '';
+
+        return mb_substr($value, 0, $max);
     }
 }

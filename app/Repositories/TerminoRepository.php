@@ -13,10 +13,7 @@ final class TerminoRepository extends BaseRepository
     {
         $where = ['t.firma_id=:firma_id', 't.deleted_at IS NULL'];
         $params = ['firma_id' => $firmaId];
-        if (($filters['estado'] ?? '') !== '') {
-            $where[] = 't.estado=:estado';
-            $params['estado'] = $filters['estado'];
-        }
+        $this->applyStateFilter($where, $params, (string) ($filters['estado'] ?? ''));
         if (($filters['caso_id'] ?? 0) > 0) {
             $where[] = 't.caso_id=:caso_id';
             $params['caso_id'] = $filters['caso_id'];
@@ -73,13 +70,47 @@ final class TerminoRepository extends BaseRepository
         return $statement->fetchAll();
     }
 
+    /** @return list<array<string, mixed>> */
+    public function searchForSelect(int $firmaId, string $query, ?int $casoId = null, int $limit = 20): array
+    {
+        $where = ['t.firma_id=:firma_id', 't.deleted_at IS NULL'];
+        $params = ['firma_id' => $firmaId];
+        if ($casoId !== null) {
+            $where[] = 't.caso_id=:caso_id';
+            $params['caso_id'] = $casoId;
+        }
+        $normalized = preg_replace('/\s+/', ' ', mb_strtolower(trim($query))) ?? '';
+        $raw = mb_substr(trim($query), 0, 180);
+        if ($normalized !== '' || $raw !== '') {
+            $where[] = '(t.titulo_normalizado LIKE :q OR t.descripcion LIKE :raw OR c.titulo_normalizado LIKE :q)';
+            $params['q'] = '%' . mb_substr($normalized, 0, 180) . '%';
+            $params['raw'] = '%' . $raw . '%';
+        }
+        $statement = $this->pdo->prepare(
+            'SELECT t.id,t.caso_id,t.titulo,t.fecha_vencimiento,t.estado,c.titulo AS caso_titulo
+             FROM terminos t
+             LEFT JOIN casos c ON c.id=t.caso_id AND c.firma_id=t.firma_id
+             WHERE ' . implode(' AND ', $where) . '
+             ORDER BY t.fecha_vencimiento ASC, t.id DESC
+             LIMIT :limit'
+        );
+        foreach ($params as $key => $value) {
+            $statement->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $statement->bindValue(':limit', max(1, min(50, $limit)), PDO::PARAM_INT);
+        $statement->execute();
+
+        return $statement->fetchAll();
+    }
+
     /** @return array<string, mixed>|null */
     public function findForFirma(int $firmaId, int $id): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT t.*, c.titulo AS caso_titulo, u.nombre AS responsable_nombre
+            'SELECT t.*, c.titulo AS caso_titulo, ta.titulo AS tarea_titulo, u.nombre AS responsable_nombre
              FROM terminos t
              LEFT JOIN casos c ON c.id=t.caso_id AND c.firma_id=t.firma_id
+             LEFT JOIN tareas ta ON ta.id=t.tarea_id AND ta.firma_id=t.firma_id
              LEFT JOIN usuarios u ON u.id=t.responsable_usuario_id AND u.firma_id=t.firma_id
              WHERE t.id=:id AND t.firma_id=:firma_id AND t.deleted_at IS NULL'
         );
@@ -155,5 +186,18 @@ final class TerminoRepository extends BaseRepository
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
         $statement->execute(['id' => $id, 'firma_id' => $firmaId]);
+    }
+
+    /** @param list<string> $where @param array<string, mixed> $params */
+    private function applyStateFilter(array &$where, array &$params, string $state): void
+    {
+        match ($state) {
+            'cumplido' => $where[] = 't.estado=\'cumplido\'',
+            'vencido' => $where[] = 't.estado<>\'cumplido\' AND t.fecha_vencimiento < CURRENT_DATE()',
+            'critico' => $where[] = 't.estado<>\'cumplido\' AND t.fecha_vencimiento >= CURRENT_DATE() AND t.fecha_vencimiento <= DATE_ADD(CURRENT_DATE(), INTERVAL t.alerta_dias DAY)',
+            'proximo' => $where[] = 't.estado<>\'cumplido\' AND t.fecha_vencimiento > DATE_ADD(CURRENT_DATE(), INTERVAL t.alerta_dias DAY) AND t.fecha_vencimiento <= DATE_ADD(CURRENT_DATE(), INTERVAL 7 DAY)',
+            'vigente' => $where[] = 't.estado=\'vigente\' AND t.fecha_vencimiento > DATE_ADD(CURRENT_DATE(), INTERVAL 7 DAY)',
+            default => null,
+        };
     }
 }

@@ -13,10 +13,7 @@ final class TareaRepository extends BaseRepository
     {
         $where = ['ta.firma_id=:firma_id', 'ta.deleted_at IS NULL'];
         $params = ['firma_id' => $firmaId];
-        if (($filters['estado'] ?? '') !== '') {
-            $where[] = 'ta.estado=:estado';
-            $params['estado'] = $filters['estado'];
-        }
+        $this->applyStateFilter($where, $params, (string) ($filters['estado'] ?? ''));
         if (($filters['caso_id'] ?? 0) > 0) {
             $where[] = 'ta.caso_id=:caso_id';
             $params['caso_id'] = $filters['caso_id'];
@@ -74,6 +71,39 @@ final class TareaRepository extends BaseRepository
         $row = $statement->fetch();
 
         return is_array($row) ? $row : null;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function searchForSelect(int $firmaId, string $query, ?int $casoId = null, int $limit = 20): array
+    {
+        $where = ['ta.firma_id=:firma_id', 'ta.deleted_at IS NULL'];
+        $params = ['firma_id' => $firmaId];
+        if ($casoId !== null) {
+            $where[] = 'ta.caso_id=:caso_id';
+            $params['caso_id'] = $casoId;
+        }
+        $normalized = preg_replace('/\s+/', ' ', mb_strtolower(trim($query))) ?? '';
+        $raw = mb_substr(trim($query), 0, 180);
+        if ($normalized !== '' || $raw !== '') {
+            $where[] = '(ta.titulo_normalizado LIKE :q OR ta.descripcion LIKE :raw OR c.titulo_normalizado LIKE :q)';
+            $params['q'] = '%' . mb_substr($normalized, 0, 180) . '%';
+            $params['raw'] = '%' . $raw . '%';
+        }
+        $statement = $this->pdo->prepare(
+            'SELECT ta.id,ta.caso_id,ta.termino_id,ta.titulo,ta.fecha_vencimiento,ta.estado,c.titulo AS caso_titulo
+             FROM tareas ta
+             LEFT JOIN casos c ON c.id=ta.caso_id AND c.firma_id=ta.firma_id
+             WHERE ' . implode(' AND ', $where) . '
+             ORDER BY ta.fecha_vencimiento IS NULL ASC, ta.fecha_vencimiento ASC, ta.id DESC
+             LIMIT :limit'
+        );
+        foreach ($params as $key => $value) {
+            $statement->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $statement->bindValue(':limit', max(1, min(50, $limit)), PDO::PARAM_INT);
+        $statement->execute();
+
+        return $statement->fetchAll();
     }
 
     /** @param array<string, mixed> $data */
@@ -157,5 +187,19 @@ final class TareaRepository extends BaseRepository
             'id' => $id,
             'firma_id' => $firmaId,
         ]);
+    }
+
+    /** @param list<string> $where @param array<string, mixed> $params */
+    private function applyStateFilter(array &$where, array &$params, string $state): void
+    {
+        if ($state === 'vencida') {
+            $where[] = 'ta.estado NOT IN (\'completada\',\'cancelada\') AND ta.fecha_vencimiento IS NOT NULL AND ta.fecha_vencimiento < CURRENT_DATE()';
+
+            return;
+        }
+        if (in_array($state, ['pendiente', 'en_proceso', 'completada', 'cancelada'], true)) {
+            $where[] = 'ta.estado=:estado';
+            $params['estado'] = $state;
+        }
     }
 }

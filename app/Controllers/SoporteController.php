@@ -19,6 +19,7 @@ final class SoporteController extends Controller
         return $this->view('soporte/index', [
             'title' => 'Soporte',
             'tickets' => $this->container->get(SoporteService::class)->list($this->firmaId(), $firmaScope, max(1, (int) $request->query('page', 1))),
+            'slaPolicy' => $this->container->get(SoporteService::class)->slaPolicy(),
             'csrfToken' => $this->csrf->token(),
             'currentUser' => $this->currentUser(),
         ]);
@@ -29,6 +30,7 @@ final class SoporteController extends Controller
         return $this->view('soporte/show', [
             'title' => 'Ticket de soporte',
             'ticket' => $this->container->get(SoporteService::class)->find($this->firmaId(), (int) $id, $this->firmaScope()),
+            'slaPolicy' => $this->container->get(SoporteService::class)->slaPolicy(),
             'csrfToken' => $this->csrf->token(),
             'currentUser' => $this->currentUser(),
         ]);
@@ -60,6 +62,7 @@ final class SoporteController extends Controller
         return $this->view('superadmin/soporte/index', [
             'title' => 'Soporte global',
             'tickets' => $this->container->get(SoporteService::class)->globalQueue(),
+            'slaPolicy' => $this->container->get(SoporteService::class)->slaPolicy(),
             'csrfToken' => $this->csrf->token(),
             'currentUser' => $this->currentUser(),
         ], 'superadmin');

@@ -1,0 +1,28 @@
+{
+  "name": "legalops-frontend-tests",
+  "private": true,
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:e2e": "cypress run",
+    "test:e2e:open": "cypress open",
+    "build": "webpack --mode production",
+    "build:dev": "webpack --mode development"
+  },
+  "devDependencies": {
+    "jest": "^29",
+    "jest-environment-jsdom": "^29",
+    "cypress": "^13",
+    "webpack": "^5",
+    "webpack-cli": "^5"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "testMatch": [
+      "**/tests/Unit/assets/js/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "public/assets/js/**/*.js"
+    ]
+  }
+}

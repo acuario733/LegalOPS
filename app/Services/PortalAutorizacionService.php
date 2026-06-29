@@ -89,6 +89,12 @@ final class PortalAutorizacionService
             'observacion_publica' => $normalized['observacion_publica'] === null ? 'no' : 'si',
             'observacion_interna' => $normalized['observacion_interna'] === null ? 'no' : 'si',
         ], $request, $firmaId, 'warning');
+        if ($normalized['recurso_tipo'] === 'usuario_cliente') {
+            $this->audit->record('USUARIO_CLIENTE_PORTAL_MODIFICADO', 'usuarios', 'usuario', $normalized['recurso_id'], [
+                'cliente_id' => $normalized['cliente_id'],
+                'estado_portal' => $normalized['estado'],
+            ], $request, $firmaId, 'warning');
+        }
     }
 
     /** @param array<string, mixed> $data @return array<string, mixed> */
@@ -126,11 +132,26 @@ final class PortalAutorizacionService
         if (($data['recurso_tipo'] === 'usuario_cliente') && ($resource['tipo'] ?? '') !== 'cliente_externo') {
             throw new HttpException(422, 'Solo usuarios externos pueden asociarse al portal.');
         }
+        if ($data['recurso_tipo'] === 'usuario_cliente' && $data['estado'] === 'autorizado' && ($resource['estado'] ?? '') !== 'activo') {
+            throw new HttpException(422, 'Solo usuarios externos activos pueden asociarse al portal.');
+        }
+        if ($data['recurso_tipo'] === 'honorario' && !in_array($resource['estado'] ?? '', ['pendiente', 'parcial', 'pagado'], true)) {
+            throw new HttpException(422, 'El honorario no participa en el saldo activo.');
+        }
+        if ($data['recurso_tipo'] === 'pago' && ($resource['estado'] ?? '') !== 'registrado') {
+            throw new HttpException(422, 'El pago no participa en el saldo activo.');
+        }
+        if ($data['recurso_tipo'] === 'gasto' && ($resource['estado'] ?? '') !== 'registrado') {
+            throw new HttpException(422, 'El gasto no participa en el saldo activo.');
+        }
         if ($data['recurso_tipo'] !== 'usuario_cliente' && isset($resource['cliente_id']) && (int) $resource['cliente_id'] !== $clienteId) {
             throw new HttpException(422, 'El recurso no pertenece al cliente seleccionado.');
         }
         if ($data['recurso_tipo'] === 'documento' && empty($resource['cliente_id'])) {
             throw new HttpException(422, 'El documento debe estar asociado a un cliente para publicarse en portal.');
+        }
+        if ($data['recurso_tipo'] === 'documento' && $data['estado'] === 'autorizado' && (int) ($resource['visible_portal'] ?? 0) !== 1) {
+            throw new HttpException(422, 'El documento debe estar marcado como visible en portal antes de autorizarlo.');
         }
     }
 
