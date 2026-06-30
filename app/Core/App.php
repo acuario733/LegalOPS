@@ -7,6 +7,7 @@ namespace App\Core;
 use App\Middleware\ApiAuthMiddleware;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\CommercialStatusMiddleware;
+use App\Middleware\EnsureMfaVerified;
 use App\Middleware\CsrfMiddleware;
 use App\Middleware\FirmaMiddleware;
 use App\Middleware\GuestMiddleware;
@@ -19,9 +20,13 @@ use App\Middleware\PortalClienteMiddleware;
 use App\Middleware\RateLimitMiddleware;
 use App\Middleware\SuperadminMiddleware;
 use App\Monitoring\ErrorReporter;
+use App\Logging\StructuredLogger;
+use App\Middleware\RequestTimingMiddleware;
 use App\Security\RateLimiter;
 use App\Security\RedisRateLimiter;
+use App\Security\ApiRateLimitService;
 use App\Services\LimitePlanService;
+use App\Services\MfaService;
 use App\Services\SessionService;
 use App\Repositories\LoginAttemptRepository;
 use App\Repositories\UsuarioRepository;
@@ -99,6 +104,8 @@ final class App
         $container->instance(Permission::class, $permissions);
         $container->instance(Csrf::class, $csrf);
         $container->instance(Audit::class, $audit);
+        $structuredLogger = new StructuredLogger((string) Config::get('app.log_path', $basePath . '/storage/logs/app.log'));
+        $container->instance(StructuredLogger::class, $structuredLogger);
         $container->instance(Database::class, $database);
         $container->singleton(PDO::class, static fn (): PDO => $database->connection());
         $container->singleton(RateLimiter::class, static fn (): RateLimiter => new RateLimiter());
@@ -121,6 +128,11 @@ final class App
                 );
             });
         }
+        $container->singleton(ApiRateLimitService::class, static function (Container $c) use ($redisHost): ApiRateLimitService {
+            $redis = $redisHost !== '' ? $c->get(RedisClient::class) : null;
+
+            return new ApiRateLimitService($redis);
+        });
 
         $controllerResolver = static function (string $controller) use ($container): object {
             if (!class_exists($controller) || !is_subclass_of($controller, Controller::class)) {
@@ -156,7 +168,10 @@ final class App
                 ),
                 'portal' => new PortalClienteMiddleware($auth),
                 'superadmin' => new SuperadminMiddleware($auth),
-                'api_auth' => new ApiAuthMiddleware($container->get(PDO::class)),
+                'api_auth' => new ApiAuthMiddleware(
+                    $container->get(PDO::class),
+                    $container->get(ApiRateLimitService::class)
+                ),
                 'rate_limit' => new RateLimitMiddleware(static function (Request $request) use ($container, $parameter): array {
                     if ($parameter === 'public') {
                         $limiter = $container->get(RateLimiter::class);
@@ -185,11 +200,20 @@ final class App
 
                     return ['allowed' => $allowed, 'retry_after' => $retryAfter];
                 }),
+                'mfa.verified' => new EnsureMfaVerified($auth, $container->get(MfaService::class)),
                 default => throw new RuntimeException(sprintf('Middleware "%s" no registrado.', $name)),
             };
         };
 
+        // Registrar service providers declarados en config/app.php
+        foreach ((array) Config::get('app.providers', []) as $providerClass) {
+            if (is_string($providerClass) && class_exists($providerClass) && method_exists($providerClass, 'register')) {
+                $providerClass::register($container);
+            }
+        }
+
         $router = new Router($controllerResolver, $middlewareResolver);
+        $router->middleware(new RequestTimingMiddleware($structuredLogger, $auth));
         $router->middleware(new CsrfMiddleware($csrf));
         self::loadRoutes($router, $basePath . '/routes');
 

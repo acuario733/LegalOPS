@@ -17,4 +17,7 @@ return [
     'backup_retention_days' => (int) Config::env('BACKUP_RETENTION_DAYS', 14),
     'inbound_email_domain' => Config::env('INBOUND_EMAIL_DOMAIN', 'inbound.legal.com'),
     'inbound_email_secret' => Config::env('INBOUND_EMAIL_WEBHOOK_SECRET', ''),
+    'providers' => [
+        \App\Providers\MfaServiceProvider::class,
+    ],
 ];

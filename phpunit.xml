@@ -7,6 +7,23 @@
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
         </testsuite>
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+        <testsuite name="Phase6">
+            <file>tests/Unit/Services/TrustServiceMfaTest.php</file>
+        </testsuite>
+        <testsuite name="Phase9Phase10">
+            <file>tests/Unit/HonorarioServiceTest.php</file>
+            <file>tests/Unit/RbacTest.php</file>
+            <file>tests/Unit/Api/RequiresApiScopeTest.php</file>
+            <file>tests/Unit/Security/ApiRateLimitServiceTest.php</file>
+            <file>tests/Unit/Services/JobMonitorServiceTest.php</file>
+            <file>tests/Unit/Services/QueueServiceTest.php</file>
+            <file>tests/Unit/Services/TrustServiceTest.php</file>
+            <file>tests/Unit/Services/TrustServiceMfaTest.php</file>
+            <file>tests/Unit/Services/WebhookServiceTest.php</file>
+        </testsuite>
     </testsuites>
     <source>
         <include>
