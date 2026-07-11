@@ -17,3 +17,5 @@
 /storage/backups/*
 !/storage/backups/.gitignore
 
+
+/storage/cache/
