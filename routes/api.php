@@ -19,12 +19,17 @@ use App\Controllers\SaldoController;
 use App\Controllers\SearchController;
 use App\Controllers\TareaController;
 use App\Controllers\TerminoController;
+use App\Controllers\ApiDocsController;
 use App\Core\Config;
 use App\Core\Router;
 
 return static function (Router $router): void {
     $router->get('/api/health', [HealthController::class, 'api']);
+    $router->get('/api/health/ready', [HealthController::class, 'ready']);
+    $router->get('/api/health/queue', [HealthController::class, 'queue'], ['internal']);
     $router->post('/api/health', [HealthController::class, 'post']);
+    $router->get('/api/docs', [ApiDocsController::class, 'index']);
+    $router->get('/api/docs/openapi.json', [ApiDocsController::class, 'spec']);
 
     // Métricas detalladas — solo acceso interno (IP whitelist recomendada en nginx/apache)
     $router->get('/api/health/metrics', [HealthController::class, 'metrics'], ['internal']);

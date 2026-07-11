@@ -64,6 +64,9 @@ final class ApiTokenController extends Controller
                 'prospectos:read', 'prospectos:write',
                 'casos:read', 'casos:write',
                 'tareas:read', 'tareas:write',
+                'billing:read', 'billing:write',
+                'documents:read', 'documents:write',
+                'webhooks:read', 'webhooks:write',
             ];
             $invalid = array_diff($data['scopes'], $allowedScopes);
             if (!empty($invalid)) {
