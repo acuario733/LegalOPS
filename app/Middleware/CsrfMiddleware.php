@@ -17,7 +17,7 @@ final class CsrfMiddleware implements MiddlewareInterface
 
     public function handle(Request $request, callable $next): Response
     {
-        if (str_starts_with($request->uri(), '/webhooks/')) {
+        if (str_starts_with($request->uri(), '/webhooks/') || str_starts_with($request->uri(), '/api/v1/')) {
             return $next($request);
         }
 

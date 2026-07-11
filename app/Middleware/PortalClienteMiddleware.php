@@ -24,4 +24,3 @@ final class PortalClienteMiddleware implements MiddlewareInterface
         return $next($request);
     }
 }
-

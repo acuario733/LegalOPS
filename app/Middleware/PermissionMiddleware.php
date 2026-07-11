@@ -28,4 +28,3 @@ final class PermissionMiddleware implements MiddlewareInterface
         return $next($request);
     }
 }
-

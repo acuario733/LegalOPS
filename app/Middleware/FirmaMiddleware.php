@@ -17,11 +17,13 @@ final class FirmaMiddleware implements MiddlewareInterface
 
     public function handle(Request $request, callable $next): Response
     {
-        if ($this->auth->firmaId() === null) {
+        if (
+            $this->auth->firmaId() === null
+            && ($this->auth->user()['tipo'] ?? null) !== 'superadmin'
+        ) {
             throw new HttpException(403, 'No existe una firma activa para la sesión.');
         }
 
         return $next($request);
     }
 }
-

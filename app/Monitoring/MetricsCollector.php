@@ -26,7 +26,8 @@ final class MetricsCollector
         private readonly PDO $pdo,
         private readonly string $logPath = '',
         private readonly string $storagePath = '',
-    ) {}
+    ) {
+    }
 
     /**
      * Retorna el status completo del sistema.
@@ -156,8 +157,8 @@ final class MetricsCollector
 
             while (($line = fgets($handle)) !== false) {
                 $record = json_decode(trim($line), true);
-                if (is_array($record) && isset($record['timestamp'])) {
-                    $ts = strtotime($record['timestamp']);
+                if (is_array($record) && (isset($record['timestamp']) || isset($record['ts']))) {
+                    $ts = strtotime((string) ($record['ts'] ?? $record['timestamp']));
                     if ($ts !== false && $ts >= $threshold) {
                         $count++;
                     }

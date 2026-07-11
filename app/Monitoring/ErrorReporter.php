@@ -29,7 +29,8 @@ final class ErrorReporter
         private readonly string $slackWebhookUrl = '',
         private readonly string $appEnv = 'production',
         private readonly string $appUrl = '',
-    ) {}
+    ) {
+    }
 
     /**
      * Reporta un error si es elegible (no es HTTP client error, estamos en producción).
@@ -37,7 +38,8 @@ final class ErrorReporter
     public function report(Throwable $exception, string $correlationId, string $requestUri = ''): void
     {
         // No reportar errores de cliente (4xx)
-        if ($exception instanceof HttpException
+        if (
+            $exception instanceof HttpException
             && in_array($exception->status(), self::IGNORED_STATUS_CODES, true)
         ) {
             return;

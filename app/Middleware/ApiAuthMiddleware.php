@@ -7,6 +7,7 @@ namespace App\Middleware;
 use App\Core\Request;
 use App\Core\Response;
 use PDO;
+use App\Security\ApiRateLimitService;
 
 /**
  * ApiAuthMiddleware — autenticación Bearer token para /api/v1/
@@ -28,7 +29,9 @@ final class ApiAuthMiddleware implements MiddlewareInterface
 {
     public function __construct(
         private readonly PDO $pdo,
-    ) {}
+        private readonly ?ApiRateLimitService $rateLimiter = null
+    ) {
+    }
 
     public function handle(Request $request, callable $next): Response
     {
@@ -102,12 +105,22 @@ final class ApiAuthMiddleware implements MiddlewareInterface
         }
 
         // Adjuntar contexto al request para los controllers
-        $request->setAttribute('api_firma_id',  (int) $token['firma_id']);
-        $request->setAttribute('api_token_id',  (int) $token['id']);
+        $request->setAttribute('api_firma_id', (int) $token['firma_id']);
+        $request->setAttribute('api_token_id', (int) $token['id']);
         $request->setAttribute('api_usuario_id', $token['usuario_id'] !== null ? (int) $token['usuario_id'] : null);
-        $request->setAttribute('api_scopes',     $scopes);
+        $request->setAttribute('api_scopes', $scopes);
 
-        return $next($request);
+        $rate = ($this->rateLimiter ?? new ApiRateLimitService())->check((int) $token['id']);
+        if (!$rate['allowed']) {
+            return Response::json(null, 'Limite de API excedido.', 429, [], false)
+                ->withHeader('Retry-After', (string) $rate['retry_after'])
+                ->withHeader('X-RateLimit-Remaining', '0')
+                ->withHeader('X-RateLimit-Reset', (string) $rate['reset_at']);
+        }
+
+        return $next($request)
+            ->withHeader('X-RateLimit-Remaining', (string) $rate['remaining'])
+            ->withHeader('X-RateLimit-Reset', (string) $rate['reset_at']);
     }
 
     private function unauthorized(string $message): Response
@@ -117,7 +130,7 @@ final class ApiAuthMiddleware implements MiddlewareInterface
             message: $message,
             status: 401,
             errors: [],
-            ok: false,
+            ok: false
         )->withHeader('WWW-Authenticate', 'Bearer realm="LegalOPS API"');
     }
 }

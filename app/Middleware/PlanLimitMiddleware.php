@@ -27,4 +27,3 @@ final class PlanLimitMiddleware implements MiddlewareInterface
         return $next($request);
     }
 }
-

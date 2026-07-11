@@ -14,8 +14,7 @@ final class CommercialStatusMiddleware implements MiddlewareInterface
     public function __construct(
         private readonly Auth $auth,
         private readonly \App\Services\CommercialStatusService $commercialStatus
-    )
-    {
+    ) {
     }
 
     public function handle(Request $request, callable $next): Response
