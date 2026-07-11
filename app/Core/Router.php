@@ -207,4 +207,3 @@ final class Router
         return ['#^' . $pattern . '/?$#', $parameters];
     }
 }
-

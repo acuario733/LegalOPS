@@ -99,6 +99,7 @@ final class Database
 
             return $result;
         } catch (Throwable $exception) {
+            // @phpstan-ignore if.alwaysFalse
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
@@ -107,4 +108,3 @@ final class Database
         }
     }
 }
-

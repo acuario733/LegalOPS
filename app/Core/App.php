@@ -7,6 +7,7 @@ namespace App\Core;
 use App\Middleware\ApiAuthMiddleware;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\CommercialStatusMiddleware;
+use App\Middleware\CorsMiddleware;
 use App\Middleware\EnsureMfaVerified;
 use App\Middleware\CsrfMiddleware;
 use App\Middleware\FirmaMiddleware;
@@ -18,6 +19,7 @@ use App\Middleware\PermissionMiddleware;
 use App\Middleware\PlanLimitMiddleware;
 use App\Middleware\PortalClienteMiddleware;
 use App\Middleware\RateLimitMiddleware;
+use App\Middleware\SecurityHeadersMiddleware;
 use App\Middleware\SuperadminMiddleware;
 use App\Monitoring\ErrorReporter;
 use App\Logging\StructuredLogger;
@@ -41,7 +43,8 @@ final class App
         private readonly Router $router,
         private readonly ErrorHandler $errors,
         private readonly Audit $audit,
-        private readonly Container $container
+        private readonly Container $container,
+        private readonly CorsMiddleware $cors
     ) {
     }
 
@@ -113,7 +116,7 @@ final class App
         // Redis — solo si REDIS_HOST está configurado en .env
         $redisHost = (string) Config::get('redis.host', '');
         if ($redisHost !== '') {
-            $container->singleton(RedisClient::class, static function () use ($basePath): RedisClient {
+            $container->singleton(RedisClient::class, static function (): RedisClient {
                 return new RedisClient([
                     'scheme' => (string) Config::get('redis.scheme', 'tcp'),
                     'host'   => (string) Config::get('redis.host', '127.0.0.1'),
@@ -212,12 +215,16 @@ final class App
             }
         }
 
+        $cors = new CorsMiddleware((string) getenv('CORS_ALLOWED_ORIGINS'));
+
         $router = new Router($controllerResolver, $middlewareResolver);
+        $router->middleware(new SecurityHeadersMiddleware());
+        $router->middleware($cors);
         $router->middleware(new RequestTimingMiddleware($structuredLogger, $auth));
         $router->middleware(new CsrfMiddleware($csrf));
         self::loadRoutes($router, $basePath . '/routes');
 
-        return new self($router, $errors, $audit, $container);
+        return new self($router, $errors, $audit, $container, $cors);
     }
 
     public function run(): void
@@ -227,6 +234,12 @@ final class App
 
     public function handle(Request $request): Response
     {
+        // OPTIONS preflight: el Router no ejecuta middleware global en rutas sin registrar,
+        // por eso el CorsMiddleware delega el preflight directamente aquí.
+        if ($request->method() === 'OPTIONS' && str_starts_with($request->uri(), '/api/v1/')) {
+            return $this->cors->preflight($request);
+        }
+
         try {
             return $this->router->dispatch($request);
         } catch (Throwable $exception) {

@@ -28,7 +28,8 @@ final class Request
         private readonly array $json = [],
         private readonly array $files = [],
         private readonly array $headers = [],
-        private readonly array $server = []
+        private readonly array $server = [],
+        private readonly string $rawBody = ''
     ) {
     }
 
@@ -82,7 +83,8 @@ final class Request
             $json,
             $_FILES,
             $headers,
-            $_SERVER
+            $_SERVER,
+            is_string($rawBody) ? $rawBody : ''
         );
     }
 
@@ -132,6 +134,11 @@ final class Request
     public function header(string $name, ?string $default = null): ?string
     {
         return $this->headers[strtolower($name)] ?? $default;
+    }
+
+    public function rawBody(): string
+    {
+        return $this->rawBody;
     }
 
     /** @return array<string, string> */

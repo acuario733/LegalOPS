@@ -20,4 +20,3 @@ final class TenantContext
         return (int) $firmaId;
     }
 }
-

@@ -155,7 +155,7 @@ final class MigrationRunner
         $files = glob($this->migrationPath . DIRECTORY_SEPARATOR . '*.sql') ?: [];
         sort($files, SORT_STRING);
 
-        return array_values($files);
+        return $files;
     }
 
     private function migrationSection(string $file, string $section): string
@@ -273,4 +273,3 @@ final class MigrationRunner
         return $statements;
     }
 }
-
