@@ -159,6 +159,9 @@ $billingStatuses = ['activa', 'prueba', 'pago_vencido'];
                                 <?php endif; ?>
                             </td>
                             <td>
+                                <a href="/superadmin/firmas/<?= (int) $firma['id'] ?>" class="btn btn-sm btn-outline-primary mb-1">
+                                    <i class="bi bi-eye"></i> Ver detalle
+                                </a>
                                 <?php if ($status === 'activa' || $status === 'prueba'): ?>
                                     <button class="btn btn-sm btn-outline-warning" data-action="/superadmin/firmas/<?= (int) $firma['id'] ?>/suspender" data-prompt="Motivo de suspension" data-confirm="Suspender esta firma?">Suspender</button>
                                 <?php elseif ($status === 'suspendida'): ?>
