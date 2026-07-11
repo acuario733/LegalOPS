@@ -156,6 +156,20 @@ final class HonorarioRepository extends BaseRepository
         $statement->execute(['estado' => $status, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
+    public function initializeBilling(int $firmaId, int $id, string $dueDate): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE honorarios SET numero=:numero,fecha_vencimiento=:fecha_vencimiento,updated_at=CURRENT_TIMESTAMP
+             WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
+        );
+        $statement->execute([
+            'numero' => 'FAC-' . str_pad((string) $id, 8, '0', STR_PAD_LEFT),
+            'fecha_vencimiento' => $dueDate,
+            'id' => $id,
+            'firma_id' => $firmaId,
+        ]);
+    }
+
     /** @param array<string, mixed> $data */
     public function create(array $data): int
     {

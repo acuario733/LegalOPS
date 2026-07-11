@@ -22,7 +22,12 @@ final class HonorarioService
         private readonly LimitePlanService $limits,
         private readonly AuditoriaService $audit,
         private readonly Auth $auth,
-        private readonly CatalogoLookupService $catalogs
+        private readonly CatalogoLookupService $catalogs,
+        private readonly HonorarioLineaService $lineas,
+        private readonly BillingService $billing,
+        private readonly DashboardService $dashboard,
+        // @phpstan-ignore property.onlyWritten
+        private readonly ?WebhookService $webhooks = null
     ) {
     }
 
@@ -39,7 +44,10 @@ final class HonorarioService
     /** @return array<string, mixed> */
     public function find(int $firmaId, int $id): array
     {
-        return $this->repository->findForFirma($firmaId, $id) ?? throw new HttpException(404, 'El honorario no existe en la firma.');
+        $honorario = $this->repository->findForFirma($firmaId, $id) ?? throw new HttpException(404, 'El honorario no existe en la firma.');
+        $honorario['lineas'] = $this->lineas->listar($firmaId, $id);
+
+        return $honorario;
     }
 
     /** @param array<string, mixed> $data */
@@ -52,6 +60,12 @@ final class HonorarioService
         }
         $this->validate($normalized);
         $id = $this->repository->create($this->recordData($normalized));
+        $dueDate = $this->dateValue($data['fecha_vencimiento'] ?? date('Y-m-d', strtotime('+30 days')));
+        $this->repository->initializeBilling($firmaId, $id, $dueDate);
+        $this->lineas->reemplazarLineas($firmaId, $id, $this->invoiceLines($data, $normalized));
+        $this->billing->generatePaymentToken($firmaId, $id);
+        $this->billing->queuePdf($firmaId, $id);
+        $this->dashboard->invalidateKpis($firmaId);
         $this->audit->record('HONORARIO_CREADO', 'finanzas', 'honorario', $id, [
             'cliente_id' => $normalized['cliente_id'],
             'caso_id' => $normalized['caso_id'],
@@ -79,6 +93,10 @@ final class HonorarioService
         }
         $this->validate($normalized);
         $this->repository->update($firmaId, $id, $this->recordData($normalized));
+        $this->dashboard->invalidateKpis($firmaId);
+        if (array_key_exists('lineas', $data) && is_array($data['lineas'])) {
+            $this->lineas->reemplazarLineas($firmaId, $id, $this->invoiceLines($data, $normalized));
+        }
         $this->audit->record('HONORARIO_MODIFICADO', 'finanzas', 'honorario', $id, [
             'anterior' => ['monto' => $before['monto'], 'estado' => $before['estado']],
             'nuevo' => ['monto' => $normalized['monto'], 'estado' => $normalized['estado']],
@@ -177,7 +195,7 @@ final class HonorarioService
             'q' => $this->normalizeText((string) ($filters['q'] ?? ''), 180),
             'cliente_id' => $this->nullableInt($filters['cliente_id'] ?? null),
             'caso_id' => $this->nullableInt($filters['caso_id'] ?? null),
-            'estado' => in_array(($filters['estado'] ?? ''), ['pendiente', 'parcial', 'pagado', 'cancelado'], true) ? $filters['estado'] : '',
+            'estado' => in_array(($filters['estado'] ?? ''), ['pendiente', 'parcial', 'pagado', 'cancelado', 'anulado'], true) ? $filters['estado'] : '',
         ];
     }
 
@@ -234,5 +252,21 @@ final class HonorarioService
         }
 
         return $paid + 0.00001 >= $amount ? 'pagado' : 'parcial';
+    }
+
+    /** @param array<string, mixed> $data @param array<string, mixed> $normalized @return list<array<string, mixed>> */
+    private function invoiceLines(array $data, array $normalized): array
+    {
+        if (isset($data['lineas']) && is_array($data['lineas']) && $data['lineas'] !== []) {
+            return array_values($data['lineas']);
+        }
+
+        return [[
+            'descripcion' => $normalized['concepto'],
+            'cantidad' => 1,
+            'tarifa' => $normalized['monto'],
+            'tipo' => 'honorario_manual',
+            'referencia_id' => null,
+        ]];
     }
 }
