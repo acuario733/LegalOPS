@@ -240,7 +240,7 @@ final class IntakeFormService
             }
         }
 
-        return array_values($fields);
+        return $fields;
     }
 
     /** @return array<string, array<string, mixed>> */

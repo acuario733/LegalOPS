@@ -167,6 +167,41 @@ $maskedCard = (string) ($perfil['numero_tarjeta_profesional_enmascarado'] ?? '')
             </div>
         </div>
 
+        <?php if ($canEdit): ?>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="card-title mb-0"><i class="bi bi-key me-2"></i>Cambiar contraseña</h2>
+            </div>
+            <div class="card-body">
+                <form action="/mi-perfil/contrasena" method="post" data-ajax-form id="form-contrasena">
+                    <input type="hidden" name="_method" value="PATCH">
+                    <input type="hidden" name="_token" value="<?= e($csrfToken) ?>">
+                    <div class="mb-3">
+                        <label class="form-label" for="password-actual">Contraseña actual</label>
+                        <input class="form-control" id="password-actual" name="password_actual" type="password" autocomplete="current-password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="password-nuevo">Nueva contraseña</label>
+                        <input class="form-control" id="password-nuevo" name="password_nuevo" type="password" autocomplete="new-password" required>
+                        <div class="form-text">Mínimo 12 caracteres, una mayúscula, un número y un carácter especial.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="password-confirmacion">Confirmar nueva contraseña</label>
+                        <input class="form-control" id="password-confirmacion" name="password_confirmacion" type="password" autocomplete="new-password" required>
+                    </div>
+                    <button class="btn btn-warning w-100" type="submit">
+                        <i class="bi bi-shield-lock me-1"></i>Actualizar contraseña
+                    </button>
+                </form>
+                <script>
+                document.getElementById('form-contrasena').addEventListener('ajax:success', function () {
+                    this.reset();
+                });
+                </script>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <div class="card">
             <div class="card-header">
                 <h2 class="card-title mb-0"><i class="bi bi-people me-2"></i>Roles asignados</h2>

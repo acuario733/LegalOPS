@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Config;
+use PHPMailer\PHPMailer\Exception as MailException;
+use PHPMailer\PHPMailer\PHPMailer;
 use RuntimeException;
 
 final class LocalMailService
@@ -19,12 +21,18 @@ final class LocalMailService
         );
     }
 
-    public function send(string $email, string $subject, string $body): void
+    /** @param list<array{name: string, mime: string, content: string}> $attachments */
+    public function send(string $email, string $subject, string $body, array $attachments = []): void
     {
         if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
             throw new RuntimeException('La dirección de correo no es válida.');
         }
-        if (Config::get('mail.transport', 'local') !== 'local') {
+        $transport = (string) Config::get('mail.transport', 'local');
+        if ($transport === 'smtp') {
+            $this->sendSmtp($email, $subject, $body, $attachments);
+            return;
+        }
+        if ($transport !== 'local') {
             throw new RuntimeException('El transporte de correo configurado no está disponible.');
         }
 
@@ -50,6 +58,11 @@ final class LocalMailService
             'subject' => mb_substr(trim($subject), 0, 200),
             'body' => $body,
             'created_at' => gmdate('c'),
+            'attachments' => array_map(static fn (array $attachment): array => [
+                'name' => basename($attachment['name']),
+                'mime' => $attachment['mime'],
+                'content_base64' => base64_encode($attachment['content']),
+            ], $attachments),
         ];
         $path = $directory . '/' . bin2hex(random_bytes(16)) . '.json';
         $encoded = json_encode(
@@ -58,6 +71,42 @@ final class LocalMailService
         );
         if (file_put_contents($path, $encoded, LOCK_EX) === false) {
             throw new RuntimeException('No fue posible encolar el correo.');
+        }
+    }
+
+    /** @param list<array{name: string, mime: string, content: string}> $attachments */
+    private function sendSmtp(string $email, string $subject, string $body, array $attachments): void
+    {
+        $mailer = new PHPMailer(true);
+        try {
+            $mailer->isSMTP();
+            $mailer->Host = (string) Config::get('mail.host', '127.0.0.1');
+            $mailer->Port = (int) Config::get('mail.port', 1025);
+            $username = (string) Config::get('mail.username', '');
+            $mailer->SMTPAuth = $username !== '';
+            $mailer->Username = $username;
+            $mailer->Password = (string) Config::get('mail.password', '');
+            $mailer->CharSet = 'UTF-8';
+            $mailer->setFrom(
+                (string) Config::get('mail.from_address', 'no-reply@legalops.local'),
+                (string) Config::get('mail.from_name', 'LegalOPS Cloud')
+            );
+            $mailer->addAddress($email);
+            $mailer->Subject = mb_substr(trim($subject), 0, 200);
+            $mailer->isHTML(true);
+            $mailer->Body = $body;
+            $mailer->AltBody = trim(strip_tags($body));
+            foreach ($attachments as $attachment) {
+                $mailer->addStringAttachment(
+                    $attachment['content'],
+                    basename($attachment['name']),
+                    PHPMailer::ENCODING_BASE64,
+                    $attachment['mime']
+                );
+            }
+            $mailer->send();
+        } catch (MailException $exception) {
+            throw new RuntimeException('No fue posible enviar el correo por SMTP: ' . $exception->getMessage(), 0, $exception);
         }
     }
 }

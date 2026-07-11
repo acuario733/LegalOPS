@@ -10,7 +10,8 @@ final class PortalAutorizacionRepository extends BaseRepository
     public function overview(int $firmaId, int $clienteId): array
     {
         $items = [];
-        foreach ([
+        foreach (
+            [
             'SELECT cpp.id, \'caso\' tipo, cpp.caso_id recurso_id, c.titulo nombre, CONCAT(\'/casos/\', cpp.caso_id) url, cpp.estado, cpp.observacion_publica
              FROM caso_permisos_portal cpp
              INNER JOIN casos c ON c.id=cpp.caso_id AND c.firma_id=cpp.firma_id
@@ -43,7 +44,8 @@ final class PortalAutorizacionRepository extends BaseRepository
              FROM portal_usuario_clientes puc
              INNER JOIN usuarios u ON u.id=puc.usuario_id AND u.firma_id=puc.firma_id
              WHERE puc.firma_id=:firma_id AND puc.cliente_id=:cliente_id',
-        ] as $sql) {
+            ] as $sql
+        ) {
             $statement = $this->pdo->prepare($sql);
             $statement->execute(['firma_id' => $firmaId, 'cliente_id' => $clienteId]);
             $items = array_merge($items, $statement->fetchAll());

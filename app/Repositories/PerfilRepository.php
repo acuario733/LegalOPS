@@ -193,6 +193,32 @@ final class PerfilRepository extends BaseRepository
         $statement->execute($data + ['id' => $userId]);
     }
 
+    public function findPasswordHash(int $userId): ?string
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT password_hash
+             FROM usuarios
+             WHERE id = :id
+               AND deleted_at IS NULL'
+        );
+        $statement->execute(['id' => $userId]);
+        $row = $statement->fetch();
+
+        return is_array($row) ? ((string) $row['password_hash']) : null;
+    }
+
+    public function updatePasswordHash(int $userId, string $hash): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE usuarios
+             SET password_hash = :hash,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id
+               AND deleted_at IS NULL'
+        );
+        $statement->execute(['hash' => $hash, 'id' => $userId]);
+    }
+
     /** @param array<string, mixed> $data */
     public function recordSensitiveChange(array $data): void
     {

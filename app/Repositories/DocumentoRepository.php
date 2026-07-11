@@ -26,9 +26,15 @@ final class DocumentoRepository extends BaseRepository
             $params['gasto_id'] = $filters['gasto_id'];
         }
         if (($filters['q'] ?? '') !== '') {
-            $where[] = '(d.titulo_normalizado LIKE :q OR d.tipo_documental LIKE :q_raw)';
+            $textSearch = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql'
+                ? 'MATCH(d.titulo,d.texto_extraido) AGAINST(:q_boolean IN BOOLEAN MODE)'
+                : 'd.texto_extraido LIKE :q_raw';
+            $where[] = '(d.titulo_normalizado LIKE :q OR d.tipo_documental LIKE :q_raw OR ' . $textSearch . ')';
             $params['q'] = '%' . $filters['q'] . '%';
             $params['q_raw'] = '%' . $filters['q_raw'] . '%';
+            if ($this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+                $params['q_boolean'] = $filters['q_boolean'];
+            }
         }
 
         $sqlWhere = ' WHERE ' . implode(' AND ', $where);

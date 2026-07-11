@@ -6,6 +6,58 @@ namespace App\Repositories;
 
 final class ReporteRepository extends BaseRepository
 {
+    /** @return list<array<string, mixed>> */
+    public function crmProspects(int $firmaId, string $from, string $to): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT id,estado,fuente,created_at,estado_updated_at
+             FROM prospectos
+             WHERE firma_id=:firma_id AND created_at>=:desde AND created_at<:hasta
+               AND deleted_at IS NULL ORDER BY id'
+        );
+        $statement->execute([
+            'firma_id' => $firmaId,
+            'desde' => $from . ' 00:00:00',
+            'hasta' => (new \DateTimeImmutable($to))->modify('+1 day')->format('Y-m-d 00:00:00'),
+        ]);
+
+        return $statement->fetchAll();
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function prospectStatusHistory(int $firmaId, int $prospectId): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT estado_anterior,estado_nuevo,created_at
+             FROM prospecto_historial_estados
+             WHERE firma_id=:firma_id AND prospecto_id=:prospecto_id ORDER BY created_at,id'
+        );
+        $statement->execute(['firma_id' => $firmaId, 'prospecto_id' => $prospectId]);
+
+        return $statement->fetchAll();
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function aging(int $firmaId, string $cutoff): array
+    {
+        $daysExpression = $this->pdo->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'sqlite'
+            ? 'CAST(julianday(:corte)-julianday(h.fecha_vencimiento) AS INTEGER)'
+            : 'DATEDIFF(:corte,h.fecha_vencimiento)';
+        $statement = $this->pdo->prepare(
+            'SELECT h.id AS honorario_id,h.numero,h.monto,h.moneda,h.fecha_vencimiento,
+                    ' . $daysExpression . ' AS dias_vencido,
+                    cl.nombre_razon_social AS cliente
+             FROM honorarios h
+             INNER JOIN clientes cl ON cl.id=h.cliente_id AND cl.firma_id=h.firma_id
+             WHERE h.firma_id=:firma_id AND h.estado=\'pendiente\' AND h.fecha_vencimiento<:corte
+               AND h.deleted_at IS NULL
+             ORDER BY h.fecha_vencimiento,h.id'
+        );
+        $statement->execute(['corte' => $cutoff, 'firma_id' => $firmaId]);
+
+        return $statement->fetchAll();
+    }
+
     /** @return array{headers: list<string>, rows: list<array<string, mixed>>} */
     public function data(int $firmaId, string $type, int $limit = 2000, array $filters = []): array
     {

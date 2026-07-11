@@ -88,6 +88,34 @@ final class CasoComunicacionRepository extends BaseRepository
         return $statement->rowCount() > 0;
     }
 
+    public function markRead(int $id, int $casoId, int $firmaId, int $userId): bool
+    {
+        $statement = $this->pdo->prepare(
+            'INSERT INTO comunicacion_lecturas (comunicacion_id,firma_id,usuario_id,leido_at)
+             SELECT id,firma_id,:usuario_id,CURRENT_TIMESTAMP FROM caso_comunicaciones
+             WHERE id=:id AND caso_id=:caso_id AND firma_id=:firma_id
+               AND direccion=\'entrante\' AND deleted_at IS NULL
+             ON DUPLICATE KEY UPDATE leido_at=VALUES(leido_at)'
+        );
+        $statement->execute(['usuario_id' => $userId, 'id' => $id, 'caso_id' => $casoId, 'firma_id' => $firmaId]);
+
+        return $statement->rowCount() > 0;
+    }
+
+    public function unreadCount(int $firmaId, int $userId): int
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM caso_comunicaciones cc
+             LEFT JOIN comunicacion_lecturas cl
+               ON cl.comunicacion_id=cc.id AND cl.firma_id=cc.firma_id AND cl.usuario_id=:usuario_id
+             WHERE cc.firma_id=:firma_id AND cc.direccion=\'entrante\' AND cc.deleted_at IS NULL
+               AND cl.comunicacion_id IS NULL'
+        );
+        $statement->execute(['usuario_id' => $userId, 'firma_id' => $firmaId]);
+
+        return (int) $statement->fetchColumn();
+    }
+
     /** @return array<string, mixed>|null */
     public function findByEmailMessageId(string $messageId): ?array
     {

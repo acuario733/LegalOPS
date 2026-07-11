@@ -176,7 +176,9 @@ final class ImportacionService
 
         $rows = [];
         $errors = [];
+        /** @var array<string, int> $seenDocuments */
         $seenDocuments = [];
+        /** @var array<string, int> $seenRadicados */
         $seenRadicados = [];
         $line = 1;
         while (($values = fgetcsv($handle)) !== false) {
@@ -190,10 +192,6 @@ final class ImportacionService
                 continue;
             }
             $row = array_combine($headers, array_map(static fn ($v): string => trim((string) $v), $values));
-            if (!is_array($row)) {
-                $errors[] = ['fila' => $line, 'error' => 'Cantidad de columnas invalida.'];
-                continue;
-            }
             $missing = $type === 'clientes'
                 ? trim($row['nombre_razon_social'] ?? '') === ''
                 : (trim($row['cliente_id'] ?? '') === '' || trim($row['titulo'] ?? '') === '');
@@ -218,14 +216,18 @@ final class ImportacionService
      * @param array<string, string> $row
      * @param array<string, int> $seenDocuments
      * @param array<string, int> $seenRadicados
+     * @param-out array<string, int> $seenDocuments
+     * @param-out array<string, int> $seenRadicados
      * @return list<array<string, mixed>>
      */
     private function rowErrors(int $firmaId, string $type, array $row, int $line, array &$seenDocuments, array &$seenRadicados): array
     {
         if ($type === 'clientes') {
+            // @phpstan-ignore paramOut.type
             return $this->clientRowErrors($firmaId, $row, $line, $seenDocuments);
         }
         if ($type === 'casos') {
+            // @phpstan-ignore paramOut.type
             return $this->caseRowErrors($firmaId, $row, $line, $seenRadicados);
         }
 
@@ -244,7 +246,7 @@ final class ImportacionService
         return false;
     }
 
-    /** @param array<string, string> $row @param array<string, int> $seenDocuments @return list<array<string, mixed>> */
+    /** @param array<string, string> $row @param array<string, int> $seenDocuments @param-out array<string, int> $seenDocuments @return list<array<string, mixed>> */
     private function clientRowErrors(int $firmaId, array $row, int $line, array &$seenDocuments): array
     {
         $errors = [];
@@ -264,7 +266,7 @@ final class ImportacionService
         return $errors;
     }
 
-    /** @param array<string, string> $row @param array<string, int> $seenRadicados @return list<array<string, mixed>> */
+    /** @param array<string, string> $row @param array<string, int> $seenRadicados @param-out array<string, int> $seenRadicados @return list<array<string, mixed>> */
     private function caseRowErrors(int $firmaId, array $row, int $line, array &$seenRadicados): array
     {
         $errors = [];

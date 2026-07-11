@@ -10,6 +10,7 @@ use App\Core\Response;
 use App\Services\CommercialStatusService;
 use App\Services\FirmaService;
 use App\Services\PlanService;
+use App\Services\RolService;
 
 final class FirmaController extends Controller
 {
@@ -82,5 +83,47 @@ final class FirmaController extends Controller
     public function usage(Request $request, string $id): Response
     {
         return $this->json($this->container->get(FirmaService::class)->usage((int) $id));
+    }
+
+    public function show(Request $request, string $id): Response
+    {
+        $firmaId = (int) $id;
+        $service = $this->container->get(FirmaService::class);
+        $rolSvc  = $this->container->get(RolService::class);
+
+        $firma   = $service->find($firmaId);
+        $roles   = $rolSvc->all($firmaId);
+        foreach ($roles as &$rol) {
+            $rol['permisos_ids'] = $rolSvc->find($firmaId, (int) $rol['id'])['permisos'];
+        }
+        unset($rol);
+
+        return $this->view('superadmin/firmas/show', [
+            'title'       => $firma['nombre'] ?? 'Firma',
+            'firma'       => $firma,
+            'uso'         => $service->usage($firmaId),
+            'usuarios'    => [],
+            'pagos'       => [],
+            'logs'        => [],
+            'limites'     => [],
+            'flags'       => [],
+            'roles'       => $roles,
+            'permisos'    => $rolSvc->permissions(),
+            'csrfToken'   => $this->csrf->token(),
+            'currentUser' => $this->currentUser(),
+        ], 'superadmin');
+    }
+
+    public function syncRolePermissions(Request $request, string $firmaId, string $rolId): Response
+    {
+        $permissions = $request->input('permisos', []);
+        $this->container->get(RolService::class)->forceSyncPermissions(
+            (int) $firmaId,
+            (int) $rolId,
+            is_array($permissions) ? $permissions : [],
+            $request
+        );
+
+        return $this->json(null, 'Permisos del rol actualizados.');
     }
 }

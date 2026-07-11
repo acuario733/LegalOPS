@@ -13,7 +13,8 @@ final class DocumentTemplateService
     public function __construct(
         private readonly DocumentTemplateRepository $repository,
         private readonly TemplateVariableService $variables,
-        private readonly DocumentoService $documentos
+        private readonly DocumentoService $documentos,
+        private readonly DocxService $docx
     ) {
     }
 
@@ -74,7 +75,8 @@ final class DocumentTemplateService
         $context = $this->variables->buildContext($casoId, $firmaId, $usuarioId, $customVars);
         $content = $this->variables->resolve((string) $template['contenido'], $context);
         $name = (string) $template['nombre'] . ' — ' . date('Y-m-d');
-        $documentId = $this->documentos->createGeneratedHtml($firmaId, $casoId, $name, $content, $request);
+        $plainText = html_entity_decode(trim(strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>'], ["\n", "\n", "\n", "\n\n"], $content))), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $documentId = $this->documentos->createGeneratedDocx($firmaId, $casoId, $name, $this->docx->fromText($plainText), $request);
 
         return [
             'documento_id' => $documentId,

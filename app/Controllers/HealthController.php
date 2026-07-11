@@ -10,6 +10,9 @@ use App\Core\Database;
 use App\Core\Request;
 use App\Core\Response;
 use App\Monitoring\MetricsCollector;
+use App\Services\StorageService;
+use PDO;
+use Predis\Client as RedisClient;
 use RuntimeException;
 use Throwable;
 
@@ -44,6 +47,30 @@ final class HealthController extends Controller
     public function post(Request $request): Response
     {
         return $this->json(['status' => 'ok'], 'Token CSRF validado correctamente.');
+    }
+
+    public function ready(Request $request): Response
+    {
+        $checks = [
+            'database' => $this->databaseIsAvailable(),
+            'redis' => $this->redisIsAvailable(),
+            's3' => $this->s3IsAvailable(),
+            'queue' => $this->queueMetrics(),
+        ];
+        $healthy = $checks['database'] === true;
+
+        return $this->json(
+            $checks,
+            $healthy ? 'Servicio listo.' : 'Servicio no listo.',
+            $healthy ? 200 : 503,
+            [],
+            $healthy
+        );
+    }
+
+    public function queue(Request $request): Response
+    {
+        return $this->json($this->queueMetrics(), 'Estado de la cola.');
     }
 
     /**
@@ -83,6 +110,48 @@ final class HealthController extends Controller
             return true;
         } catch (Throwable) {
             return false;
+        }
+    }
+
+    private function redisIsAvailable(): bool|string
+    {
+        if ((string) Config::get('redis.host', '') === '') {
+            return 'not_configured';
+        }
+
+        try {
+            return strtoupper((string) $this->container->get(RedisClient::class)->ping()) === 'PONG';
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function s3IsAvailable(): bool|string
+    {
+        if (trim((string) Config::env('S3_BUCKET', '')) === '') {
+            return 'not_configured';
+        }
+
+        try {
+            return $this->container->get(StorageService::class)->healthCheck();
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /** @return array{pendientes: int, procesando: int, fallidos: int} */
+    private function queueMetrics(): array
+    {
+        try {
+            $pdo = $this->container->get(PDO::class);
+
+            return [
+                'pendientes' => (int) $pdo->query('SELECT COUNT(*) FROM jobs WHERE reserved_at IS NULL')->fetchColumn(),
+                'procesando' => (int) $pdo->query('SELECT COUNT(*) FROM jobs WHERE reserved_at IS NOT NULL')->fetchColumn(),
+                'fallidos' => (int) $pdo->query('SELECT COUNT(*) FROM failed_jobs')->fetchColumn(),
+            ];
+        } catch (Throwable) {
+            return ['pendientes' => -1, 'procesando' => -1, 'fallidos' => -1];
         }
     }
 }

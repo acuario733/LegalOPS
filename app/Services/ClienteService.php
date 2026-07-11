@@ -30,7 +30,8 @@ final class ClienteService
         private readonly AuditoriaService $audit,
         private readonly Auth $auth,
         private readonly Permission $permissions,
-        private readonly CatalogoLookupService $catalogs
+        private readonly CatalogoLookupService $catalogs,
+        private readonly ContactDeduplicationService $deduplication
     ) {
     }
 
@@ -66,8 +67,6 @@ final class ClienteService
         if (!$this->validator->validateCreate($normalized)) {
             throw new HttpException(422, 'Revise los datos del cliente.', $this->validator->errors());
         }
-        $this->ensureDocumentIsAvailable($firmaId, $normalized['documento_hash']);
-
         return $this->database->transaction(function () use ($firmaId, $normalized, $request): int {
             $id = $this->repository->create($this->recordData($normalized));
             if ((int) $normalized['tratamiento_datos_autorizado'] === 1) {
@@ -81,6 +80,18 @@ final class ClienteService
 
             return $id;
         });
+    }
+
+    /** @param array<string, mixed> $data @return array{id: int, posibles_duplicados: list<array{id: int, nombre: string, tipo: string}>} */
+    public function createWithDuplicateInfo(int $firmaId, array $data, Request $request): array
+    {
+        $duplicates = $this->deduplication->checkDuplicates(
+            $firmaId,
+            isset($data['email']) ? (string) $data['email'] : null,
+            $this->deduplication->documentHash(isset($data['numero_documento']) ? (string) $data['numero_documento'] : null)
+        );
+
+        return ['id' => $this->create($firmaId, $data, $request), 'posibles_duplicados' => $duplicates];
     }
 
     /** @param array<string, mixed> $data */

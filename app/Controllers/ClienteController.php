@@ -10,6 +10,7 @@ use App\Core\Request;
 use App\Core\Response;
 use App\Services\CatalogoLookupService;
 use App\Services\ClienteService;
+use App\Services\GdprService;
 use App\Validators\ClienteValidator;
 
 final class ClienteController extends Controller
@@ -48,9 +49,9 @@ final class ClienteController extends Controller
             return $this->json(['validation' => $validator->errors()], 'Datos inválidos. Por favor revisa los campos.', 422);
         }
 
-        $id = $this->container->get(ClienteService::class)->create($this->firmaId(), (array) $request->input(), $request);
+        $result = $this->container->get(ClienteService::class)->createWithDuplicateInfo($this->firmaId(), (array) $request->input(), $request);
 
-        return $this->json(['id' => $id], 'Cliente creado correctamente.', 201);
+        return $this->json($result, 'Cliente creado correctamente.', $result['posibles_duplicados'] === [] ? 201 : 200);
     }
 
     public function update(Request $request, string $id): Response
@@ -78,6 +79,20 @@ final class ClienteController extends Controller
         $data = $this->container->get(ClienteService::class)->reveal($this->firmaId(), (int) $id, $field, $request);
 
         return $this->json($data, 'Dato revelado correctamente.');
+    }
+
+    public function olvidar(Request $request, string $id): Response
+    {
+        $this->container->get(GdprService::class)->olvidar($this->firmaId(), (int) $id, $request);
+
+        return $this->json(null, 'Los datos personales del cliente han sido anonimizados.');
+    }
+
+    public function exportarDatos(Request $request, string $id): Response
+    {
+        $result = $this->container->get(GdprService::class)->exportarDatos($this->firmaId(), (int) $id, $request);
+
+        return $this->json($result, 'Exportación de datos generada correctamente.');
     }
 
     public function search(Request $request): Response

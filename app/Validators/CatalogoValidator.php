@@ -28,4 +28,3 @@ final class CatalogoValidator extends Validator
         ]);
     }
 }
-

@@ -48,7 +48,15 @@ final class PerfilController extends Controller
         $this->authenticatedUser();
         $this->container->get(PerfilService::class)->updateProfessional((array) $request->input(), $request);
 
-        return $this->json(null, 'InformaciÃ³n profesional actualizada correctamente.');
+        return $this->json(null, 'Información profesional actualizada correctamente.');
+    }
+
+    public function changePassword(Request $request): Response
+    {
+        $this->authenticatedUser();
+        $this->container->get(PerfilService::class)->changePassword((array) $request->input(), $request);
+
+        return $this->json(null, 'Contraseña actualizada correctamente.');
     }
 
     /** @return array<string, mixed> */

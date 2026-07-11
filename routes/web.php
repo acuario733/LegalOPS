@@ -32,8 +32,13 @@ use App\Controllers\SessionController;
 use App\Controllers\SoporteController;
 use App\Controllers\TareaController;
 use App\Controllers\TerminoController;
+use App\Controllers\TrustController;
+use App\Controllers\PaymentController;
+use App\Controllers\GoogleCalendarController;
+use App\Controllers\DocuSignController;
 use App\Controllers\UsuarioController;
 use App\Controllers\BookingController;
+use App\Controllers\CalendarioController;
 use App\Core\Config;
 use App\Core\Router;
 
@@ -41,6 +46,10 @@ return static function (Router $router): void {
     $router->get('/', static fn () => App\Core\Response::redirect('/health'));
     $router->get('/health', [HealthController::class, 'html']);
     $router->get('/offline', [OfflineController::class, 'index']);
+    $router->get('/pay/{token}', [PaymentController::class, 'show']);
+    $router->post('/pay/{token}/intent', [PaymentController::class, 'intent'], ['rate_limit']);
+    $router->post('/webhooks/stripe', [PaymentController::class, 'webhook']);
+    $router->post('/webhooks/docusign', [DocuSignController::class, 'webhook']);
 
     $router->group('', ['guest'], static function (Router $router): void {
         $router->get('/login', [AuthController::class, 'showLogin']);
@@ -57,6 +66,7 @@ return static function (Router $router): void {
         $router->get('/mi-perfil/foto', [PerfilController::class, 'photo'], ['permission:perfil.ver']);
         $router->patch('/mi-perfil', [PerfilController::class, 'update'], ['permission:perfil.editar']);
         $router->patch('/mi-perfil/profesional', [PerfilController::class, 'updateProfessional'], ['permission:perfil.editar']);
+        $router->patch('/mi-perfil/contrasena', [PerfilController::class, 'changePassword'], ['permission:perfil.editar']);
         $router->get('/sesiones', [SessionController::class, 'index'], ['permission:sesiones.ver']);
         $router->post('/sesiones/{id}/revocar', [SessionController::class, 'revoke'], ['permission:sesiones.revocar']);
         $router->get('/legal/pendientes', [AceptacionLegalController::class, 'pending'], ['permission:legal.ver']);
@@ -81,6 +91,7 @@ return static function (Router $router): void {
         $router->post('/usuarios/{userId}/roles', [RolController::class, 'assign'], ['permission:roles.asignar']);
 
         $router->get('/auditoria', [AuditoriaController::class, 'index'], ['permission:auditoria.ver']);
+        $router->get('/auditoria/exportar', [AuditoriaController::class, 'export'], ['permission:auditoria.exportar']);
         $router->get('/catalogos', [CatalogoController::class, 'index'], ['permission:configuracion.ver']);
         $router->post('/catalogos', [CatalogoController::class, 'store'], ['permission:configuracion.editar', 'plan:catalogos']);
         $router->get('/catalogos/{id}', [CatalogoController::class, 'detail'], ['permission:configuracion.ver']);
@@ -94,6 +105,8 @@ return static function (Router $router): void {
         $router->patch('/clientes/{id}', [ClienteController::class, 'update'], ['permission:clientes.editar']);
         $router->post('/clientes/{id}/eliminar', [ClienteController::class, 'delete'], ['permission:clientes.eliminar']);
         $router->post('/clientes/{id}/revelar', [ClienteController::class, 'reveal'], ['permission:clientes.revelar', 'reveal_limit']);
+        $router->post('/clientes/{id}/olvidar', [ClienteController::class, 'olvidar'], ['permission:clientes.eliminar']);
+        $router->get('/clientes/{id}/exportar-datos', [ClienteController::class, 'exportarDatos'], ['permission:clientes.eliminar']);
 
         $router->get('/prospectos', [ProspectoController::class, 'index'], ['permission:prospectos.ver']);
         $router->get('/prospectos/{id}', [ProspectoController::class, 'show'], ['permission:prospectos.ver']);
@@ -117,16 +130,30 @@ return static function (Router $router): void {
         $router->delete('/booking/{id}', [BookingController::class, 'destroy'], ['permission:booking.eliminar']);
         $router->get('/booking/{id}/appointments', [BookingController::class, 'appointments'], ['permission:booking.ver']);
         $router->patch('/booking/appointments/{id}/complete', [BookingController::class, 'complete'], ['permission:booking.editar']);
+        $router->patch('/booking/appointments/{id}/cancel', [BookingController::class, 'cancel'], ['permission:booking.editar']);
+
+        // ── Calendario ─────────────────────────────────────────────────────
+        $router->get('/calendario', [CalendarioController::class, 'index'], ['permission:calendario.ver']);
+        $router->get('/api/calendario/eventos', [CalendarioController::class, 'eventos'], ['permission:calendario.ver']);
+        $router->post('/calendario/eventos', [CalendarioController::class, 'store'], ['permission:calendario.ver']);
+        $router->patch('/calendario/eventos/{id}', [CalendarioController::class, 'update'], ['permission:calendario.ver']);
+        $router->delete('/calendario/eventos/{id}', [CalendarioController::class, 'destroy'], ['permission:calendario.ver']);
+        $router->get('/integraciones/google-calendar/conectar', [GoogleCalendarController::class, 'connect'], ['permission:integraciones.google_calendar']);
+        $router->get('/integraciones/google-calendar/callback', [GoogleCalendarController::class, 'callback'], ['permission:integraciones.google_calendar']);
+        $router->post('/integraciones/google-calendar/sync', [GoogleCalendarController::class, 'sync'], ['permission:integraciones.google_calendar']);
+        $router->delete('/integraciones/google-calendar/desconectar', [GoogleCalendarController::class, 'disconnect'], ['permission:integraciones.google_calendar']);
 
         $router->get('/casos', [CasoController::class, 'index'], ['permission:casos.ver']);
         $router->get('/casos/{id}', [CasoController::class, 'show'], ['permission:casos.ver']);
         $router->post('/casos', [CasoController::class, 'store'], ['permission:casos.crear', 'plan:casos']);
         $router->patch('/casos/{id}', [CasoController::class, 'update'], ['permission:casos.editar']);
+        $router->patch('/casos/{id}/stage', [CasoController::class, 'stage'], ['permission:casos.editar']);
         $router->post('/casos/{id}/cerrar', [CasoController::class, 'close'], ['permission:casos.cerrar']);
         $router->post('/casos/{id}/archivar', [CasoController::class, 'archive'], ['permission:casos.archivar']);
         $router->post('/casos/{id}/reabrir', [CasoController::class, 'reopen'], ['permission:casos.editar']);
         $router->get('/casos/{casoId}/comunicaciones', [CasoComunicacionController::class, 'index'], ['permission:comunicaciones.ver']);
         $router->post('/casos/{casoId}/comunicaciones', [CasoComunicacionController::class, 'store'], ['permission:comunicaciones.crear']);
+        $router->post('/casos/{casoId}/comunicaciones/{id}/leer', [CasoComunicacionController::class, 'markRead'], ['permission:comunicaciones.ver']);
         $router->delete('/casos/{casoId}/comunicaciones/{id}', [CasoComunicacionController::class, 'destroy'], ['permission:comunicaciones.eliminar']);
         $router->get('/casos/{casoId}/comunicaciones/email', [CasoComunicacionController::class, 'emailAddress'], ['permission:comunicaciones.ver']);
         $router->get('/casos/{casoId}/partes', [CasoParteController::class, 'index'], ['permission:partes.ver']);
@@ -178,11 +205,18 @@ return static function (Router $router): void {
         $router->get('/plantillas/{id}/editar', [DocumentTemplateController::class, 'edit'], ['permission:plantillas.editar']);
         $router->patch('/plantillas/{id}', [DocumentTemplateController::class, 'update'], ['permission:plantillas.editar']);
         $router->delete('/plantillas/{id}', [DocumentTemplateController::class, 'destroy'], ['permission:plantillas.eliminar']);
+        $router->get('/integraciones/docusign/conectar', [DocuSignController::class, 'connect'], ['permission:documentos.firmar']);
+        $router->get('/integraciones/docusign/callback', [DocuSignController::class, 'callback'], ['permission:documentos.firmar']);
+        $router->post('/documentos/{id}/enviar-firma', [DocuSignController::class, 'send'], ['permission:documentos.firmar']);
+        $router->get('/documentos/{id}/estado-firma', [DocuSignController::class, 'status'], ['permission:documentos.ver']);
 
         $router->get('/portal-autorizaciones', [PortalAutorizacionController::class, 'index'], ['permission:portal.autorizar']);
         $router->post('/portal-autorizaciones', [PortalAutorizacionController::class, 'change'], ['permission:portal.autorizar']);
+        $router->post('/portal-autorizaciones/{id}/invitar', [PortalAutorizacionController::class, 'invite'], ['permission:portal.autorizar']);
 
         $router->get('/reportes', [ReporteController::class, 'index'], ['permission:reportes.ver']);
+        $router->get('/reportes/aging', [ReporteController::class, 'aging'], ['permission:reportes.ver']);
+        $router->get('/reportes/crm', [ReporteController::class, 'crm'], ['permission:reportes.ver']);
         $router->get('/reportes/{tipo}/exportar', [ReporteController::class, 'export'], ['permission:reportes.exportar']);
 
         $router->get('/importaciones', [ImportacionController::class, 'index'], ['permission:importaciones.ver']);
@@ -202,15 +236,25 @@ return static function (Router $router): void {
         $router->post('/finanzas/honorarios', [FinanzasController::class, 'storeHonorario'], ['permission:finanzas.crear', 'plan:honorarios']);
         $router->patch('/finanzas/honorarios/{id}', [FinanzasController::class, 'updateHonorario'], ['permission:finanzas.editar']);
         $router->post('/finanzas/honorarios/{id}/cancelar', [FinanzasController::class, 'cancelHonorario'], ['permission:finanzas.anular']);
+        $router->post('/finanzas/honorarios/{id}/pdf', [FinanzasController::class, 'invoicePdf'], ['permission:finanzas.ver']);
+        $router->post('/finanzas/honorarios/{id}/enviar', [FinanzasController::class, 'sendInvoice'], ['permission:finanzas.crear']);
+        $router->post('/finanzas/honorarios/{id}/anular', [FinanzasController::class, 'annulInvoice'], ['permission:finanzas.anular']);
         $router->get('/finanzas/pagos', [FinanzasController::class, 'pagos'], ['permission:finanzas.ver']);
         $router->post('/finanzas/pagos', [FinanzasController::class, 'storePago'], ['permission:finanzas.crear', 'plan:pagos']);
         $router->post('/finanzas/pagos/{id}/revelar', [FinanzasController::class, 'revealPago'], ['permission:finanzas.revelar']);
         $router->post('/finanzas/pagos/{id}/anular', [FinanzasController::class, 'annulPago'], ['permission:finanzas.anular']);
+        $router->post('/finanzas/pagos/{id}/reembolsar', [FinanzasController::class, 'refundPago'], ['permission:finanzas.anular']);
         $router->get('/finanzas/gastos', [FinanzasController::class, 'gastos'], ['permission:finanzas.ver']);
         $router->post('/finanzas/gastos', [FinanzasController::class, 'storeGasto'], ['permission:finanzas.crear', 'plan:gastos']);
         $router->patch('/finanzas/gastos/{id}', [FinanzasController::class, 'updateGasto'], ['permission:finanzas.editar']);
         $router->post('/finanzas/gastos/{id}/anular', [FinanzasController::class, 'annulGasto'], ['permission:finanzas.anular']);
         $router->get('/finanzas/saldos', [SaldoController::class, 'index'], ['permission:finanzas.ver']);
+        $router->get('/finanzas/trust', [TrustController::class, 'index'], ['permission:trust.ver']);
+        $router->get('/finanzas/trust/saldo/{clienteId}', [TrustController::class, 'saldo'], ['permission:trust.ver']);
+        $router->get('/finanzas/trust/libro', [TrustController::class, 'libro'], ['permission:trust.ver']);
+        $router->get('/finanzas/trust/reporte-conciliacion', [TrustController::class, 'reporteConciliacion'], ['permission:trust.ver']);
+        $router->post('/finanzas/trust/deposito', [TrustController::class, 'depositar'], ['permission:trust.depositar']);
+        $router->post('/finanzas/trust/retiro', [TrustController::class, 'retirar'], ['permission:trust.retirar']);
     });
 
     if (Config::get('app.environment') === 'development') {

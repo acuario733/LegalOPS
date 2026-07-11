@@ -16,6 +16,7 @@ final class NotificacionService
     public function __construct(
         private readonly NotificacionRepository $repository,
         private readonly AuditoriaService $audit,
+        // @phpstan-ignore property.onlyWritten
         private readonly Auth $auth
     ) {
     }
@@ -92,6 +93,28 @@ final class NotificacionService
         }
 
         return ['created' => $created, 'checked' => $checked, 'errors' => $errors];
+    }
+
+    public function alertarSaldoBajoTrust(int $firmaId, int $trustAccountId, float $umbral): void
+    {
+        $account = $this->repository->trustAccount($firmaId, $trustAccountId);
+        if ($account === null || (float) $account['saldo'] > $umbral) {
+            return;
+        }
+        foreach ($this->repository->fallbackUsers($firmaId) as $userId) {
+            $dedupe = hash('sha256', $firmaId . '|' . $userId . '|trust_saldo_bajo|' . $trustAccountId . '|' . number_format($umbral, 2, '.', ''));
+            $this->repository->createIfMissing([
+                'firma_id' => $firmaId,
+                'usuario_id' => $userId,
+                'titulo' => 'Saldo trust bajo',
+                'mensaje' => mb_substr('La cuenta trust de ' . (string) $account['cliente_nombre'] . ' tiene saldo ' . (string) $account['saldo'] . ' ' . (string) $account['moneda'] . '.', 0, 500),
+                'severidad' => 'critica',
+                'origen_tipo' => 'trust',
+                'origen_id' => $trustAccountId,
+                'origen_url' => '/finanzas/trust/libro?cliente_id=' . (int) $account['cliente_id'],
+                'dedupe_key' => $dedupe,
+            ]);
+        }
     }
 
     /** @param array<string, mixed> $row */

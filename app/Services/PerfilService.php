@@ -26,6 +26,10 @@ final class PerfilService
     /** @var list<string> */
     private const REQUEST_METADATA = ['_method', '_token'];
 
+    private const PASSWORD_MIN_LENGTH = 12;
+
+    private const PASSWORD_INPUT = ['password_actual', 'password_nuevo', 'password_confirmacion'];
+
     /** @var list<string> */
     private const PROFESSIONAL_INPUT = [
         'es_abogado',
@@ -236,6 +240,54 @@ final class PerfilService
         });
     }
 
+    /** @param array<string, mixed> $input */
+    public function changePassword(array $input, Request $request): void
+    {
+        $userId = $this->currentUserId();
+        $this->assertOnlyPasswordInput($input);
+
+        $current = trim((string) ($input['password_actual'] ?? ''));
+        $new = (string) ($input['password_nuevo'] ?? '');
+        $confirm = (string) ($input['password_confirmacion'] ?? '');
+
+        if ($current === '') {
+            throw new HttpException(422, 'Debe ingresar su contraseña actual.', [
+                'password_actual' => ['La contraseña actual es obligatoria.'],
+            ]);
+        }
+
+        $this->validateNewPassword($new, $confirm);
+
+        $hash = $this->repository->findPasswordHash($userId);
+        if ($hash === null || !password_verify($current, $hash)) {
+            throw new HttpException(422, 'La contraseña actual no es correcta.', [
+                'password_actual' => ['La contraseña actual ingresada no coincide.'],
+            ]);
+        }
+
+        if (password_verify($new, $hash)) {
+            throw new HttpException(422, 'La nueva contraseña debe ser diferente a la actual.', [
+                'password_nuevo' => ['Elija una contraseña distinta a la que usa actualmente.'],
+            ]);
+        }
+
+        $profile = $this->own();
+        $firmaId = $profile['firma_id'] === null ? null : (int) $profile['firma_id'];
+
+        $this->repository->updatePasswordHash($userId, password_hash($new, PASSWORD_BCRYPT, ['cost' => 12]));
+
+        $this->audit->record(
+            'CONTRASENA_CAMBIADA',
+            'perfil',
+            'usuario',
+            $userId,
+            ['origen' => 'mi_perfil'],
+            $request,
+            $firmaId,
+            'warning'
+        );
+    }
+
     /** @return array{path: string, mime: string} */
     public function ownPhoto(): array
     {
@@ -263,6 +315,47 @@ final class PerfilService
         if ($unexpected !== []) {
             throw new HttpException(422, 'Mi perfil solo permite modificar información personal autorizada.', [
                 'campos' => ['Campos no permitidos: ' . implode(', ', $unexpected) . '.'],
+            ]);
+        }
+    }
+
+    /** @param array<string, mixed> $input */
+    private function assertOnlyPasswordInput(array $input): void
+    {
+        $allowed = array_merge(self::PASSWORD_INPUT, self::REQUEST_METADATA);
+        $unexpected = array_values(array_diff(array_map('strval', array_keys($input)), $allowed));
+        if ($unexpected !== []) {
+            throw new HttpException(422, 'Campos no permitidos en cambio de contraseña.', [
+                'campos' => ['Campos no permitidos: ' . implode(', ', $unexpected) . '.'],
+            ]);
+        }
+    }
+
+    private function validateNewPassword(string $new, string $confirm): void
+    {
+        if (mb_strlen($new) < self::PASSWORD_MIN_LENGTH) {
+            throw new HttpException(422, 'La contraseña nueva no cumple los requisitos de seguridad.', [
+                'password_nuevo' => ['La contraseña debe tener al menos ' . self::PASSWORD_MIN_LENGTH . ' caracteres.'],
+            ]);
+        }
+        if (!preg_match('/[A-Z]/', $new)) {
+            throw new HttpException(422, 'La contraseña nueva no cumple los requisitos de seguridad.', [
+                'password_nuevo' => ['Debe incluir al menos una letra mayúscula.'],
+            ]);
+        }
+        if (!preg_match('/[0-9]/', $new)) {
+            throw new HttpException(422, 'La contraseña nueva no cumple los requisitos de seguridad.', [
+                'password_nuevo' => ['Debe incluir al menos un número.'],
+            ]);
+        }
+        if (!preg_match('/[^A-Za-z0-9]/', $new)) {
+            throw new HttpException(422, 'La contraseña nueva no cumple los requisitos de seguridad.', [
+                'password_nuevo' => ['Debe incluir al menos un carácter especial.'],
+            ]);
+        }
+        if ($new !== $confirm) {
+            throw new HttpException(422, 'Las contraseñas no coinciden.', [
+                'password_confirmacion' => ['La confirmación no coincide con la nueva contraseña.'],
             ]);
         }
     }

@@ -23,6 +23,30 @@ final class RolRepository extends BaseRepository
         return $statement->fetchAll();
     }
 
+    /** All roles across all firms — superadmin-only view. @return list<array<string, mixed>> */
+    public function allGlobal(): array
+    {
+        return $this->pdo->query(
+            'SELECT r.id, r.firma_id, r.codigo, r.nombre, r.descripcion, r.estado, r.is_protected,
+                    f.nombre AS firma_nombre,
+                    COUNT(DISTINCT ur.usuario_id) AS usuarios
+             FROM roles r
+             LEFT JOIN firmas f ON f.id = r.firma_id
+             LEFT JOIN usuario_roles ur ON ur.rol_id = r.id AND ur.firma_id = r.firma_id
+             WHERE r.deleted_at IS NULL
+             GROUP BY r.id, r.firma_id, r.codigo, r.nombre, r.descripcion, r.estado, r.is_protected, f.nombre
+             ORDER BY f.nombre, r.nombre'
+        )->fetchAll();
+    }
+
+    /** All permissions without the assignable filter — for superadmin view. @return list<array<string, mixed>> */
+    public function allPermissions(): array
+    {
+        return $this->pdo->query(
+            'SELECT id, codigo, modulo, accion, descripcion FROM permisos ORDER BY modulo, accion'
+        )->fetchAll();
+    }
+
     /** @return array<string, mixed>|null */
     public function findForFirma(int $firmaId, int $id): ?array
     {

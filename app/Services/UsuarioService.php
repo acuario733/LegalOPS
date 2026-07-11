@@ -100,10 +100,12 @@ final class UsuarioService
         if ($normalized['tipo'] === 'cliente_externo') {
             $roleIds = [];
         }
-        if ((string) $before['estado'] === 'activo'
+        if (
+            (string) $before['estado'] === 'activo'
             && $this->repository->hasRole($id, $firmaId, 'administrador')
             && $this->repository->countActiveAdmins($firmaId) <= 1
-            && ($normalized['estado'] === 'inactivo' || !$this->containsAdminRole($firmaId, array_map('intval', $roleIds)))) {
+            && ($normalized['estado'] === 'inactivo' || !$this->containsAdminRole($firmaId, array_map('intval', $roleIds)))
+        ) {
             throw new HttpException(409, 'No se puede dejar la firma sin un administrador activo.');
         }
 

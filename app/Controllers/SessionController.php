@@ -28,4 +28,3 @@ final class SessionController extends Controller
         return $this->json(null, 'Sesión revocada correctamente.');
     }
 }
-

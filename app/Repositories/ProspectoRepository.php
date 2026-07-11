@@ -90,7 +90,10 @@ final class ProspectoRepository extends BaseRepository
         );
         $statement->execute($data);
 
-        return (int) $this->pdo->lastInsertId();
+        $id = (int) $this->pdo->lastInsertId();
+        $this->touchStatusTimestamp((int) $data['firma_id'], $id);
+
+        return $id;
     }
 
     /** @param array<string, mixed> $data */
@@ -111,18 +114,36 @@ final class ProspectoRepository extends BaseRepository
 
     public function setStatus(int $firmaId, int $id, string $status): void
     {
+        $statusTimestamp = $this->hasStatusTimestamp() ? ',estado_updated_at=CURRENT_TIMESTAMP(6)' : '';
         $statement = $this->pdo->prepare(
-            'UPDATE prospectos SET estado=:estado,updated_at=CURRENT_TIMESTAMP(6)
+            'UPDATE prospectos SET estado=:estado' . $statusTimestamp . ',updated_at=CURRENT_TIMESTAMP(6)
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
         $statement->execute(['estado' => $status, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
-    public function markConverted(int $firmaId, int $id, int $clienteId): void
+    public function recordStatusChange(int $firmaId, int $id, string $before, string $after, ?int $userId): void
     {
         $statement = $this->pdo->prepare(
+            'INSERT INTO prospecto_historial_estados
+             (firma_id,prospecto_id,estado_anterior,estado_nuevo,usuario_id,created_at)
+             VALUES (:firma_id,:prospecto_id,:estado_anterior,:estado_nuevo,:usuario_id,CURRENT_TIMESTAMP)'
+        );
+        $statement->execute([
+            'firma_id' => $firmaId,
+            'prospecto_id' => $id,
+            'estado_anterior' => $before,
+            'estado_nuevo' => $after,
+            'usuario_id' => $userId ?: null,
+        ]);
+    }
+
+    public function markConverted(int $firmaId, int $id, int $clienteId): void
+    {
+        $statusTimestamp = $this->hasStatusTimestamp() ? ',estado_updated_at=CURRENT_TIMESTAMP(6)' : '';
+        $statement = $this->pdo->prepare(
             'UPDATE prospectos
-             SET estado=\'ganado\', converted_cliente_id=:cliente_id, converted_at=CURRENT_TIMESTAMP(6), updated_at=CURRENT_TIMESTAMP(6)
+             SET estado=\'ganado\'' . $statusTimestamp . ',converted_cliente_id=:cliente_id, converted_at=CURRENT_TIMESTAMP(6), updated_at=CURRENT_TIMESTAMP(6)
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
         $statement->execute(['cliente_id' => $clienteId, 'id' => $id, 'firma_id' => $firmaId]);
@@ -158,7 +179,10 @@ final class ProspectoRepository extends BaseRepository
         );
         $statement->execute($data);
 
-        return (int) $this->pdo->lastInsertId();
+        $id = (int) $this->pdo->lastInsertId();
+        $this->touchStatusTimestamp((int) $data['firma_id'], $id);
+
+        return $id;
     }
 
     public function updateFromPublicSource(
@@ -191,5 +215,26 @@ final class ProspectoRepository extends BaseRepository
         ]);
 
         return $statement->rowCount() > 0;
+    }
+
+    private function touchStatusTimestamp(int $firmaId, int $id): void
+    {
+        if (!$this->hasStatusTimestamp()) {
+            return;
+        }
+        $statement = $this->pdo->prepare(
+            'UPDATE prospectos SET estado_updated_at=CURRENT_TIMESTAMP WHERE id=:id AND firma_id=:firma_id'
+        );
+        $statement->execute(['id' => $id, 'firma_id' => $firmaId]);
+    }
+
+    private function hasStatusTimestamp(): bool
+    {
+        try {
+            $this->pdo->query('SELECT estado_updated_at FROM prospectos WHERE 1=0');
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

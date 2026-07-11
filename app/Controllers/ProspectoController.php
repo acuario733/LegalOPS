@@ -51,9 +51,9 @@ final class ProspectoController extends Controller
             return $this->json(['validation' => $validator->errors()], 'Datos inválidos. Por favor revisa los campos.', 422);
         }
 
-        $id = $this->container->get(ProspectoService::class)->create($this->firmaId(), (array) $request->input(), $request);
+        $result = $this->container->get(ProspectoService::class)->createWithDuplicateInfo($this->firmaId(), (array) $request->input(), $request);
 
-        return $this->json(['id' => $id], 'Prospecto creado correctamente.', 201);
+        return $this->json($result, 'Prospecto creado correctamente.', $result['posibles_duplicados'] === [] ? 201 : 200);
     }
 
     public function update(Request $request, string $id): Response

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Auth;
+use App\Core\Config;
 use App\Core\Database;
 use App\Core\HttpException;
 use App\Core\Request;
@@ -13,6 +14,8 @@ use App\Repositories\DocumentoRepository;
 use App\Repositories\DocumentoVersionRepository;
 use App\Validators\DocumentoVersionValidator;
 use RuntimeException;
+use ZipArchive;
+use App\Jobs\PdfTextExtractionJob;
 
 final class DocumentoVersionService
 {
@@ -35,8 +38,11 @@ final class DocumentoVersionService
         private readonly DocumentoVersionValidator $validator,
         private readonly Database $database,
         private readonly AuditoriaService $audit,
-        private readonly Auth $auth
+        private readonly Auth $auth,
+        private ?StorageService $storage = null,
+        private ?QueueService $queue = null
     ) {
+        $this->storage ??= new StorageService();
     }
 
     /** @return list<array<string, mixed>> */
@@ -55,11 +61,21 @@ final class DocumentoVersionService
         $stored = null;
 
         try {
-            return $this->database->transaction(function () use ($firmaId, $documentId, $file, $metadata, $request, $event, &$stored): int {
+            $versionId = $this->database->transaction(function () use ($firmaId, $documentId, $file, $metadata, $request, $event, &$stored): int {
                 $version = $this->repository->nextNumber($firmaId, $documentId);
                 $target = $this->targetPath($firmaId, $documentId, $version, $metadata['extension']);
                 $this->storeFile((string) $file['tmp_name'], $target['absolute']);
                 $stored = $target['absolute'];
+                $s3Key = null;
+                $s3Bucket = null;
+                if ($this->s3Enabled()) {
+                    $contents = file_get_contents($target['absolute']);
+                    if ($contents === false) {
+                        throw new RuntimeException('No fue posible leer el documento para subirlo a S3.');
+                    }
+                    $s3Key = $this->storage->upload($firmaId, 'docs/' . $documentId . '/v' . $version . '/' . $target['name'], $contents, (string) $metadata['mime_detectado']);
+                    $s3Bucket = (string) Config::env('S3_BUCKET', '');
+                }
                 $id = $this->repository->create([
                     'firma_id' => $firmaId,
                     'documento_id' => $documentId,
@@ -72,6 +88,8 @@ final class DocumentoVersionService
                     'size_bytes' => $metadata['size_bytes'],
                     'checksum_sha256' => $metadata['checksum_sha256'],
                     'storage_path' => $target['relative'],
+                    's3_key' => $s3Key,
+                    's3_bucket' => $s3Bucket,
                     'uploaded_by_usuario_id' => $this->auth->id(),
                 ]);
                 $this->documentos->setCurrentVersion($firmaId, $documentId, $id);
@@ -85,11 +103,51 @@ final class DocumentoVersionService
 
                 return $id;
             });
+            if ($this->s3Enabled() && $stored !== null && is_file($stored)) {
+                @unlink($stored);
+            }
+            if ($metadata['extension'] === 'pdf' && $this->queue !== null) {
+                $this->queue->dispatch(PdfTextExtractionJob::class, [
+                    'firma_id' => $firmaId,
+                    'documento_id' => $documentId,
+                    'version_id' => $versionId,
+                ], 'documents');
+            }
+
+            return $versionId;
         } catch (\Throwable $exception) {
             if ($stored !== null && is_file($stored)) {
                 @unlink($stored);
             }
             throw $exception;
+        }
+    }
+
+    public function createFromContents(
+        int $firmaId,
+        int $documentId,
+        string $name,
+        string $mime,
+        string $contents,
+        Request $request,
+        string $event = 'DOCUMENTO_VERSION_GENERADA'
+    ): int {
+        $tmp = tempnam(sys_get_temp_dir(), 'legalops-doc-');
+        if ($tmp === false || file_put_contents($tmp, $contents) === false) {
+            throw new RuntimeException('No fue posible preparar el documento generado.');
+        }
+        try {
+            return $this->create($firmaId, $documentId, [
+                'error' => UPLOAD_ERR_OK,
+                'tmp_name' => $tmp,
+                'name' => basename($name),
+                'size' => strlen($contents),
+                'type' => $mime,
+            ], $request, $event);
+        } finally {
+            if (is_file($tmp)) {
+                @unlink($tmp);
+            }
         }
     }
 
@@ -99,6 +157,27 @@ final class DocumentoVersionService
         $version = $this->repository->findCurrent($firmaId, $documentId) ?? throw new HttpException(404, 'El documento no tiene version disponible.');
 
         return $this->downloadVersion($firmaId, $document, $version, $request);
+    }
+
+    /** @return array{url: string, expires_in: int} */
+    public function currentPresignedUrl(int $firmaId, int $documentId, Request $request): array
+    {
+        $document = $this->document($firmaId, $documentId);
+        $version = $this->repository->findCurrent($firmaId, $documentId)
+            ?? throw new HttpException(404, 'El documento no tiene version disponible.');
+        if (empty($version['s3_key']) || !$this->s3Enabled()) {
+            throw new HttpException(409, 'El documento aun no esta disponible en almacenamiento S3.');
+        }
+        $ttl = 900;
+        $this->audit->record('DOCUMENTO_URL_PRESIGNADA', 'documentos', 'documento', (int) $document['id'], [
+            'version_id' => (int) $version['id'],
+            'version_numero' => (int) $version['version_numero'],
+        ], $request, $firmaId, 'warning');
+
+        return [
+            'url' => $this->storage->presignedUrl((string) $version['s3_key'], $ttl),
+            'expires_in' => $ttl,
+        ];
     }
 
     public function download(int $firmaId, int $documentId, int $versionId, Request $request): Response
@@ -118,6 +197,16 @@ final class DocumentoVersionService
     /** @param array<string, mixed> $document @param array<string, mixed> $version */
     private function downloadVersion(int $firmaId, array $document, array $version, Request $request): Response
     {
+        if (!empty($version['s3_key']) && $this->s3Enabled()) {
+            $this->audit->record('DOCUMENTO_DESCARGADO', 'documentos', 'documento', (int) $document['id'], [
+                'version_id' => (int) $version['id'],
+                'version_numero' => (int) $version['version_numero'],
+                's3_key' => $version['s3_key'],
+            ], $request, $firmaId, 'warning');
+
+            return Response::redirect($this->storage->presignedUrl((string) $version['s3_key']));
+        }
+
         $path = $this->resolveStoragePath((string) $version['storage_path']);
         if (!is_file($path) || hash_file('sha256', $path) !== $version['checksum_sha256']) {
             throw new HttpException(409, 'La integridad del documento no pudo verificarse.');
@@ -154,6 +243,7 @@ final class DocumentoVersionService
         if (!in_array($detected, $this->allowed[$extension], true)) {
             throw new HttpException(422, 'El MIME detectado no coincide con la lista permitida.');
         }
+        $this->verifyMagicBytes($tmp, $extension);
         $data = [
             'nombre_original' => mb_substr($original, 0, 255),
             'extension' => $extension,
@@ -167,6 +257,70 @@ final class DocumentoVersionService
         }
 
         return $data;
+    }
+
+    /**
+     * Verifica que los primeros bytes del archivo correspondan al tipo declarado.
+     * Para DOCX/XLSX además valida la estructura interna del paquete OOXML.
+     *
+     * Esto cierra el vector de un archivo PHP (u otro ejecutable) renombrado a .pdf:
+     * aunque finfo pueda confundirse con contenido mixto, los magic bytes son
+     * inequívocos y se leen directamente del sistema de archivos.
+     */
+    /** @internal Expuesto para pruebas unitarias. */
+    public function verifyMagicBytes(string $tmpPath, string $extension): void
+    {
+        $handle = fopen($tmpPath, 'rb');
+        if ($handle === false) {
+            throw new HttpException(422, 'No se pudo leer el archivo para validacion.');
+        }
+
+        $bytes = fread($handle, 8);
+        fclose($handle);
+
+        if ($bytes === false || strlen($bytes) < 4) {
+            throw new HttpException(422, 'El archivo es demasiado pequeno para ser valido.');
+        }
+
+        $valid = match ($extension) {
+            'pdf'          => str_starts_with($bytes, '%PDF'),
+            'png'          => str_starts_with($bytes, "\x89PNG\r\n\x1a\n"),
+            'jpg', 'jpeg'  => str_starts_with($bytes, "\xff\xd8\xff"),
+            'doc', 'xls'   => str_starts_with($bytes, "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"),
+            'docx', 'xlsx' => str_starts_with($bytes, "PK\x03\x04") && $this->verifyOoxml($tmpPath, $extension),
+            'txt'          => true,
+            default        => false,
+        };
+
+        if (!$valid) {
+            throw new HttpException(422, 'El contenido del archivo no corresponde a la extension declarada.');
+        }
+    }
+
+    private function verifyOoxml(string $tmpPath, string $extension): bool
+    {
+        if (!class_exists(ZipArchive::class)) {
+            return true;
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($tmpPath) !== true) {
+            return false;
+        }
+
+        // Valida que el paquete ZIP sea un OOXML real de la familia correcta.
+        // [Content_Types].xml es obligatorio en todo OOXML; word/document.xml
+        // identifica DOCX y xl/workbook.xml identifica XLSX.
+        $contentTypes = $zip->locateName('[Content_Types].xml') !== false;
+        $hasWordmark  = $zip->locateName('word/document.xml') !== false;
+        $hasXlMark    = $zip->locateName('xl/workbook.xml') !== false;
+        $zip->close();
+
+        return $contentTypes && match ($extension) {
+            'docx'  => $hasWordmark,
+            'xlsx'  => $hasXlMark,
+            default => false,
+        };
     }
 
     /** @return array{name: string, relative: string, absolute: string} */
@@ -209,5 +363,10 @@ final class DocumentoVersionService
     private function storageRoot(): string
     {
         return dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'storage';
+    }
+
+    private function s3Enabled(): bool
+    {
+        return trim((string) Config::env('S3_BUCKET', '')) !== '';
     }
 }

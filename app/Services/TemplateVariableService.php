@@ -74,7 +74,7 @@ final class TemplateVariableService
     public function extractFromContent(string $html): array
     {
         preg_match_all('/{{\s*([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)\s*}}/i', $html, $matches);
-        $variables = array_map(static fn (string $value): string => strtolower(trim($value)), $matches[1] ?? []);
+        $variables = array_map(static fn (string $value): string => strtolower(trim($value)), $matches[1]);
 
         return array_values(array_unique($variables));
     }
@@ -88,7 +88,7 @@ final class TemplateVariableService
                 $group = strtolower((string) $matches[1]);
                 $key = strtolower((string) $matches[2]);
                 if (!array_key_exists($group, $context) || !array_key_exists($key, $context[$group])) {
-                    return (string) $matches[0];
+                    return '[CAMPO_NO_ENCONTRADO]';
                 }
 
                 return htmlspecialchars((string) $context[$group][$key], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');

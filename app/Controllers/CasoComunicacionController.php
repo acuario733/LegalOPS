@@ -57,6 +57,18 @@ final class CasoComunicacionController extends Controller
         ]);
     }
 
+    public function markRead(Request $request, string $casoId, string $id): Response
+    {
+        $this->container->get(CasoComunicacionService::class)->markRead(
+            $this->firmaId(),
+            (int) $casoId,
+            (int) $id,
+            $this->usuarioId()
+        );
+
+        return $this->json(null, 'Comunicacion marcada como leida.');
+    }
+
     /** @param array<string, mixed> $data */
     private function viewContent(string $view, array $data): string
     {

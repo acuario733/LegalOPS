@@ -15,6 +15,7 @@ use App\Services\GastoService;
 use App\Services\HonorarioService;
 use App\Services\PagoService;
 use App\Services\PortalAutorizacionService;
+use App\Services\PortalAuthService;
 use App\Services\UsuarioService;
 
 final class PortalAutorizacionController extends Controller
@@ -52,6 +53,13 @@ final class PortalAutorizacionController extends Controller
         $clienteId = $this->nullableInt($request->query('cliente_id'));
 
         return $this->json($clienteId === null ? [] : $this->container->get(PortalAutorizacionService::class)->overview($this->firmaId(), $clienteId));
+    }
+
+    public function invite(Request $request, string $id): Response
+    {
+        $this->container->get(PortalAuthService::class)->invite($this->firmaId(), (int) $id);
+
+        return $this->json(null, 'Invitacion al portal encolada.');
     }
 
     private function nullableInt(mixed $value): ?int

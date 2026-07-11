@@ -14,13 +14,34 @@ final class RolController extends Controller
 {
     public function index(Request $request): Response
     {
+        $service     = $this->container->get(RolService::class);
+        $isSuperadmin = ($this->currentUser()['tipo'] ?? null) === 'superadmin';
+
+        if ($isSuperadmin) {
+            // Global view: all roles across all firms; uses the superadmin PATCH endpoint
+            return $this->view('roles/index', [
+                'title'       => 'Roles y permisos — Global',
+                'roles'       => $service->allGlobal(),
+                'permisos'    => $service->allPermissions(),
+                'isSuperadmin' => true,
+                'csrfToken'   => $this->csrf->token(),
+                'currentUser' => $this->currentUser(),
+            ]);
+        }
+
         $firmaId = $this->firmaId();
+        $roles   = $service->all($firmaId);
+        foreach ($roles as &$rol) {
+            $rol['permisos_ids'] = $service->find($firmaId, (int) $rol['id'])['permisos'];
+        }
+        unset($rol);
 
         return $this->view('roles/index', [
-            'title' => 'Roles y permisos',
-            'roles' => $this->container->get(RolService::class)->all($firmaId),
-            'permisos' => $this->container->get(RolService::class)->permissions(),
-            'csrfToken' => $this->csrf->token(),
+            'title'       => 'Roles y permisos',
+            'roles'       => $roles,
+            'permisos'    => $service->permissions(),
+            'isSuperadmin' => false,
+            'csrfToken'   => $this->csrf->token(),
             'currentUser' => $this->currentUser(),
         ]);
     }
@@ -54,4 +75,3 @@ final class RolController extends Controller
         return $this->currentFirma() === null ? throw new HttpException(403, 'La operación requiere una firma activa.') : (int) $this->currentFirma();
     }
 }
-

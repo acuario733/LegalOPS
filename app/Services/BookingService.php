@@ -176,6 +176,7 @@ final class BookingService
         $normalized = $this->normalizeConfig($data, $current);
         $this->repository->updateConfig($id, $firmaId, $normalized);
 
+        // @phpstan-ignore nullCoalesce.expr
         return $this->repository->findConfigById($id, $firmaId)
             ?? throw new HttpException(404, 'La configuración no existe en la firma.');
     }
@@ -346,11 +347,13 @@ final class BookingService
             substr((string) $appointment['hora_inicio'], 0, 5),
             $cancelUrl
         );
-        foreach (array_unique(array_filter([
+        foreach (
+            array_unique(array_filter([
             (string) $appointment['email_cliente'],
             (string) ($appointment['notificar_email'] ?? ''),
             (string) ($appointment['usuario_email'] ?? ''),
-        ])) as $email) {
+            ])) as $email
+        ) {
             if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
                 continue;
             }

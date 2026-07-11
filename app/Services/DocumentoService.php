@@ -28,7 +28,8 @@ final class DocumentoService
         private readonly LimitePlanService $limits,
         private readonly Database $database,
         private readonly AuditoriaService $audit,
-        private readonly Auth $auth
+        private readonly Auth $auth,
+        private readonly ?WebhookService $webhooks = null
     ) {
     }
 
@@ -60,12 +61,15 @@ final class DocumentoService
             throw new HttpException(422, 'Revise los datos del documento.', $this->validator->errors());
         }
 
-        return $this->database->transaction(function () use ($firmaId, $normalized, $file, $request): int {
+        $id = $this->database->transaction(function () use ($firmaId, $normalized, $file, $request): int {
             $id = $this->repository->create($this->recordData($normalized));
             $this->versionService->create($firmaId, $id, $file, $request, 'DOCUMENTO_CARGADO');
 
             return $id;
         });
+        $this->webhooks?->dispatch($firmaId, 'document.uploaded', ['id' => $id, 'caso_id' => $normalized['caso_id']]);
+
+        return $id;
     }
 
     /** @param array<string, mixed> $data */
@@ -147,6 +151,41 @@ final class DocumentoService
         });
     }
 
+    public function createGeneratedDocx(int $firmaId, int $casoId, string $title, string $contents, Request $request): int
+    {
+        $case = $this->casos->findForFirma($firmaId, $casoId) ?? throw new HttpException(422, 'El caso seleccionado no pertenece a la firma.');
+        $data = [
+            'firma_id' => $firmaId,
+            'cliente_id' => (int) $case['cliente_id'],
+            'caso_id' => $casoId,
+            'gasto_id' => null,
+            'titulo' => mb_substr(trim($title), 0, 180),
+            'titulo_normalizado' => $this->normalizeText($title, 180),
+            'descripcion' => 'Documento DOCX generado desde plantilla.',
+            'tipo_documental' => 'generado',
+            'estado' => 'activo',
+            'visible_portal' => 0,
+            'created_by_usuario_id' => $this->auth->id(),
+        ];
+        $documentId = $this->repository->create($this->recordData($data));
+        try {
+            $this->versionService->createFromContents(
+                $firmaId,
+                $documentId,
+                $data['titulo'] . '.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                $contents,
+                $request,
+                'DOCUMENTO_GENERADO_DESDE_PLANTILLA'
+            );
+        } catch (\Throwable $exception) {
+            $this->repository->softDelete($firmaId, $documentId);
+            throw $exception;
+        }
+
+        return $documentId;
+    }
+
     /** @param array<string, mixed> $data @param array<string, mixed>|null $before @return array<string, mixed> */
     private function normalize(int $firmaId, array $data, ?array $before = null): array
     {
@@ -219,6 +258,7 @@ final class DocumentoService
         return [
             'q' => $this->normalizeText($q, 180),
             'q_raw' => mb_substr($q, 0, 180),
+            'q_boolean' => implode(' ', array_map(static fn (string $term): string => '+' . $term . '*', preg_split('/\s+/', preg_replace('/[^\pL\pN\s]/u', ' ', $q) ?? '') ?: [])),
             'cliente_id' => $this->nullableInt($filters['cliente_id'] ?? null),
             'caso_id' => $this->nullableInt($filters['caso_id'] ?? null),
             'gasto_id' => $this->nullableInt($filters['gasto_id'] ?? null),

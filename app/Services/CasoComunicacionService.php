@@ -57,6 +57,19 @@ final class CasoComunicacionService
         }
     }
 
+    public function markRead(int $firmaId, int $caseId, int $communicationId, int $userId): void
+    {
+        $this->case($caseId, $firmaId);
+        if (!$this->repository->markRead($communicationId, $caseId, $firmaId, $userId)) {
+            throw new HttpException(404, 'La comunicacion entrante no existe en el caso.');
+        }
+    }
+
+    public function unreadCount(int $firmaId, int $userId): int
+    {
+        return $this->repository->unreadCount($firmaId, $userId);
+    }
+
     public function getEmailAddress(int $casoId, int $firmaId): string
     {
         $this->case($casoId, $firmaId);

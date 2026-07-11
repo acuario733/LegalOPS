@@ -26,7 +26,9 @@ final class PagoService
         private readonly Database $database,
         private readonly AuditoriaService $audit,
         private readonly Auth $auth,
-        private readonly CatalogoLookupService $catalogs
+        private readonly CatalogoLookupService $catalogs,
+        private readonly DashboardService $dashboard,
+        private readonly ?WebhookService $webhooks = null
     ) {
     }
 
@@ -65,7 +67,7 @@ final class PagoService
             }
             if ($normalized['honorario_id'] !== null) {
                 $fee = $this->honorarios->findForFirma($firmaId, (int) $normalized['honorario_id']) ?? throw new HttpException(422, 'El honorario seleccionado no pertenece a la firma.');
-                if ($fee['estado'] === 'cancelado') {
+                if (in_array($fee['estado'], ['cancelado', 'anulado'], true)) {
                     throw new HttpException(422, 'No se pueden registrar pagos sobre un honorario cancelado.');
                 }
                 $paid = $this->honorarios->totalPaid($firmaId, (int) $normalized['honorario_id']);
@@ -75,12 +77,9 @@ final class PagoService
                 }
             }
             $id = $this->repository->create($this->recordData($normalized));
-            if ($normalized['honorario_id'] !== null) {
-                $fee = $this->honorarios->findForFirma($firmaId, (int) $normalized['honorario_id']) ?? null;
-                if ($fee !== null && $fee['estado'] !== 'cancelado') {
-                    $paid = $this->honorarios->totalPaid($firmaId, (int) $normalized['honorario_id']);
-                    $this->honorarios->updateStatus($firmaId, (int) $normalized['honorario_id'], $paid + 0.00001 >= (float) $fee['monto'] ? 'pagado' : 'parcial');
-                }
+            if ($normalized['honorario_id'] !== null && !in_array($fee['estado'], ['cancelado', 'anulado'], true)) {
+                $paid = $this->honorarios->totalPaid($firmaId, (int) $normalized['honorario_id']);
+                $this->honorarios->updateStatus($firmaId, (int) $normalized['honorario_id'], $paid + 0.00001 >= (float) $fee['monto'] ? 'pagado' : 'parcial');
             }
             $this->audit->record('PAGO_REGISTRADO', 'finanzas', 'pago', $id, [
                 'cliente_id' => $normalized['cliente_id'],
@@ -89,6 +88,13 @@ final class PagoService
                 'monto' => $normalized['monto'],
                 'referencia_hash' => $normalized['referencia_hash'],
             ], $request, $firmaId, 'warning');
+            $this->dashboard->invalidateKpis($firmaId);
+            $this->webhooks?->dispatch($firmaId, 'payment.received', [
+                'id' => $id,
+                'honorario_id' => $normalized['honorario_id'],
+                'monto' => $normalized['monto'],
+                'moneda' => $normalized['moneda'],
+            ]);
 
             return $id;
         });
@@ -223,7 +229,7 @@ final class PagoService
             'cliente_id' => $this->nullableInt($filters['cliente_id'] ?? null),
             'caso_id' => $this->nullableInt($filters['caso_id'] ?? null),
             'honorario_id' => $this->nullableInt($filters['honorario_id'] ?? null),
-            'estado' => in_array(($filters['estado'] ?? ''), ['registrado', 'anulado'], true) ? $filters['estado'] : '',
+            'estado' => in_array(($filters['estado'] ?? ''), ['registrado', 'anulado', 'reembolsado'], true) ? $filters['estado'] : '',
         ];
     }
 

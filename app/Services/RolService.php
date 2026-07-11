@@ -44,6 +44,24 @@ final class RolService
         return $this->repository->permissions();
     }
 
+    /** All roles across all firms with their permission IDs — superadmin-only. @return list<array<string, mixed>> */
+    public function allGlobal(): array
+    {
+        $roles = $this->repository->allGlobal();
+        foreach ($roles as &$rol) {
+            $rol['permisos_ids'] = $this->repository->permissionIds((int) $rol['firma_id'], (int) $rol['id']);
+        }
+        unset($rol);
+
+        return $roles;
+    }
+
+    /** All permissions (including superadmin-only) — for superadmin view. @return list<array<string, mixed>> */
+    public function allPermissions(): array
+    {
+        return $this->repository->allPermissions();
+    }
+
     /** @param array<string, mixed> $data @param list<int> $permissions */
     public function create(int $firmaId, array $data, array $permissions, Request $request, bool $protected = false): int
     {
@@ -97,10 +115,12 @@ final class RolService
         if ($user['tipo'] === 'cliente_externo' && $roleIds !== []) {
             throw new HttpException(422, 'Los usuarios externos no pueden recibir roles internos.');
         }
-        if (($user['estado'] ?? null) === 'activo'
+        if (
+            ($user['estado'] ?? null) === 'activo'
             && $this->users->hasRole($userId, $firmaId, 'administrador')
             && $this->users->countActiveAdmins($firmaId) <= 1
-            && !$this->containsAdminRole($firmaId, array_map('intval', $roleIds))) {
+            && !$this->containsAdminRole($firmaId, array_map('intval', $roleIds))
+        ) {
             throw new HttpException(409, 'No se puede dejar la firma sin un administrador activo.');
         }
         $this->database->transaction(function () use ($firmaId, $userId, $roleIds, $request): void {
@@ -121,6 +141,20 @@ final class RolService
             'descripcion' => trim((string) ($data['descripcion'] ?? '')),
             'estado' => (string) ($data['estado'] ?? 'activo'),
         ];
+    }
+
+    /**
+     * Superadmin-only: sync permissions on any role, ignoring is_protected.
+     * @param list<int> $permissions Raw permission IDs from the request
+     */
+    public function forceSyncPermissions(int $firmaId, int $id, array $permissions, Request $request): void
+    {
+        $before = $this->find($firmaId, $id);
+        $this->database->transaction(function () use ($firmaId, $id, $permissions, $before, $request): void {
+            $assignable = $this->repository->assignablePermissionIds(array_map('intval', $permissions));
+            $this->repository->syncPermissions($firmaId, $id, $assignable);
+            $this->audit->record('ROL_PERMISOS_FORZADOS', 'roles', 'rol', $id, ['codigo' => $before['codigo'], 'permisos' => $assignable], $request, $firmaId);
+        });
     }
 
     /** @param list<int> $roleIds */

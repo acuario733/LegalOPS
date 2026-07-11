@@ -415,7 +415,7 @@ final class MfaService
         $length = (int) Config::get('mfa.recovery_length', 8);
         $codes  = [];
         for ($i = 0; $i < $count; $i++) {
-            $codes[] = strtoupper(bin2hex(random_bytes((int) ceil($length / 2)))).substr('', 0, $length);
+            $codes[] = strtoupper(bin2hex(random_bytes((int) ceil($length / 2)))) . substr('', 0, $length);
             $codes[$i] = strtoupper(substr(bin2hex(random_bytes($length)), 0, $length));
         }
         return $codes;
