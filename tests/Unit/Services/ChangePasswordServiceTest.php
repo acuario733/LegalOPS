@@ -10,9 +10,11 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Repositories\AuditoriaRepository;
 use App\Repositories\PerfilRepository;
+use App\Repositories\UsuarioCambiosSensiblesRepository;
 use App\Services\AuditoriaService;
 use App\Services\PerfilService;
 use App\Services\SensitiveDataService;
+use App\Services\UsuarioCambiosSensiblesService;
 use App\Validators\PerfilValidator;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
@@ -186,6 +188,10 @@ class ChangePasswordServiceTest extends TestCase
         $auditoriaService = new AuditoriaService($auditoriaRepo, $this->auth);
         $sensitive        = new SensitiveDataService();
         $validator        = new PerfilValidator();
+        $cambiosSensibles = new UsuarioCambiosSensiblesService(
+            new UsuarioCambiosSensiblesRepository($this->pdo),
+            $sensitive
+        );
 
         return new PerfilService(
             $perfilRepo,
@@ -193,7 +199,8 @@ class ChangePasswordServiceTest extends TestCase
             $db,
             $auditoriaService,
             $this->auth,
-            $sensitive
+            $sensitive,
+            $cambiosSensibles
         );
     }
 
