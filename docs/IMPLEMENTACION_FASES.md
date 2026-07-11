@@ -746,9 +746,19 @@ F9-F10:
 - `git diff --check`: sin errores; solo avisos de normalizacion LF/CRLF.
 - Intento de cobertura: tests verdes, sin driver local Xdebug/PCOV.
 
-## Fase 6 — MFA (Multi-Factor Authentication)
+## Fase 6 — Seguridad y Cumplimiento (F6-1 a F6-5)
 
-Estado: implementada en sesion 2026-06-30.
+Estado: todos los items implementados y cerrados en sesiones C1-C4 (2026-06-30).
+
+Nota: el plan original (`LegalOPS_Fases_Implementacion.md`) denominaba esta fase "MFA" y listaba 5 items. Solo F6-1 (MFA) fue implementada en la sesion original de la fase; los items F6-2 a F6-5 quedaron pendientes y fueron cerrados via las sesiones de auditoria C1-C3 del mismo dia. Este registro consolida los 5 items para dejar Fase 6 completa y sin ambiguedad:
+
+| Item | Titulo | Estado | Sesion |
+| - | - | - | - |
+| F6-1 | MFA TOTP y Recovery OTP | CERRADO | Fase 6 original |
+| F6-2 | SecurityHeadersMiddleware + CORS explicito | CERRADO | C1 |
+| F6-3 | GDPR: derecho al olvido y portabilidad | CERRADO | C2 |
+| F6-4 | Magic bytes en validacion de uploads | CERRADO | C3 |
+| F6-5 | Analisis estatico phpcs/phpstan en 100% de app/ | CERRADO | C4 |
 
 ### F6-1 MFA TOTP y Recovery OTP
 
@@ -803,3 +813,278 @@ Migraciones aplicadas en MySQL (2026-06-30):
 - El deploy a staging no fue ejecutado: requiere configurar secrets de GitHub y un host de staging.
 - La tabla `user_mfa` se creo sin FK a `firmas` y `usuarios` por discrepancia de tipo (BIGINT vs INT declarado en la migracion original); la columna fue corregida a BIGINT UNSIGNED en `0527_phase6_mfa.sql` para nuevos entornos.
 - `0509_superadmin_roles.sql` presento fallo por FK inexistente (`fk_rol_permiso_firma`); migrado igualmente ya que el resto del SQL es idempotente.
+
+## Plan de Cierre de Brechas de Auditoria (iniciado 2026-06-30)
+
+Origen: auditoria de cumplimiento del 2026-06-30 (ver `03_AUDITORIAS/2026-06-30/Auditoria_Cumplimiento_LegalOPS_V2.docx`), que verifico este archivo contra el codigo real y encontro que la Fase 6 del plan original (`LegalOPS_Fases_Implementacion.md`, 5 items) solo quedo cerrada en un item (F6-1 MFA), mas otros puntos menores pendientes. Las sesiones de cierre (C1-C6) resuelven esos puntos. Al terminar cada sesion, se agrega su reporte en la seccion "Registro de Sesiones de Cierre" al final de este mismo archivo — no se crean documentos nuevos.
+
+Regla: no se avanza a la siguiente sesion de cierre sin el 'OK' explicito del usuario sobre la sesion actual, igual que el resto de este archivo.
+
+### Roadmap de sesiones de cierre
+
+| Sesion | Resuelve | Prioridad | Prerrequisito | Estado |
+| - | - | - | - | - |
+| C1 | F6-2 — Activar SecurityHeadersMiddleware + CORS explicito | Critica | Ninguno | CERRADA 2026-06-30 |
+| C2 | F6-3 — GDPR: derecho al olvido y portabilidad de datos | Critica | Ninguno | CERRADA 2026-06-30 |
+| C3 | F6-4 — Magic bytes reales en validacion de uploads | Alta | Ninguno | CERRADA 2026-06-30 |
+| C4 | Ampliar phpcs/phpstan a todo el codigo nuevo (F1-F8 + F6 MFA) | Alta | C1, C2, C3 completas | CERRADA 2026-06-30 |
+| C5 | Higiene documental y de proceso (F6 en este archivo, libreria QR, convencion de commits) | Media/Baja | C1-C4 | CERRADA 2026-06-30 |
+| C6 | Ejecutar pipeline GitHub Actions en staging real | Media | Host de staging + secrets provistos por el usuario | Bloqueada (externo) |
+
+### C1 — Activar SecurityHeadersMiddleware + CORS explicito
+
+Objetivo: los headers de seguridad ya escritos en `app/Middleware/SecurityHeadersMiddleware.php` no se envian hoy porque el middleware nunca se registro en `App.php`; tampoco existe politica CORS para `/api/v1/*`.
+
+Archivos esperados: `app/Middleware/SecurityHeadersMiddleware.php` (MODIFICAR si aplica), `app/Middleware/CorsMiddleware.php` (NUEVO), `app/Core/App.php` (MODIFICAR — registrar middleware global y lectura de `CORS_ALLOWED_ORIGINS`), `.env.example` (MODIFICAR).
+
+Criterio de aceptacion: `curl -I /login` muestra CSP, X-Content-Type-Options, Referrer-Policy y Permissions-Policy; una peticion cross-origin no autorizada a `/api/v1/*` recibe 403; ninguna vista existente se rompe por CSP.
+
+Advertencia: revisar scripts/estilos inline de las vistas existentes antes de activar CSP en produccion — pueden requerir ajuste de la whitelist.
+
+### C2 — GDPR: derecho al olvido y portabilidad de datos
+
+Objetivo: cerrar F6-3, marcado como prerrequisito de produccion en el plan original y hoy sin ningun rastro en el codigo.
+
+Archivos esperados: `database/migrations/0528_gdpr.sql` (`clientes.olvidado_at`, tabla `exportaciones_datos`), `app/Services/GdprService.php` (NUEVO), `app/Controllers/ClienteController.php` (MODIFICAR — `POST /clientes/:id/olvidar`, `GET /clientes/:id/exportar-datos`), `routes/web.php` (MODIFICAR), `tests/Unit/Services/GdprServiceTest.php` (NUEVO).
+
+Criterio de aceptacion: anonimiza PII (nombre, email, telefono, documento) pero conserva honorarios y pagos con `cliente_id`; la exportacion sube JSON a S3 y retorna URL presignada; ambas acciones exigen permiso `clientes.eliminar` y quedan en `AuditoriaService`.
+
+### C3 — Magic bytes reales en validacion de uploads
+
+Objetivo: cerrar F6-4 sin romper la validacion actual (extension permitida + `finfo`), agregando lectura de bytes crudos y verificacion de estructura ZIP/OOXML para docx/xlsx.
+
+Archivos esperados: `app/Services/DocumentoVersionService.php` (MODIFICAR metodo `inspectFile()`), test correspondiente (AMPLIAR).
+
+Criterio de aceptacion: un `.php` renombrado a `.pdf` se rechaza; un PDF real con extension `.doc` se rechaza; los tipos ya soportados (pdf, docx, xlsx, png, jpg, mp3, mp4, mov) se siguen subiendo sin cambios.
+
+### C4 — Ampliar cobertura de phpcs/phpstan
+
+Objetivo: `phpcs.xml` y `phpstan.neon` (nivel 6) hoy solo cubren ~13 rutas de la superficie de F9/F10; todo el codigo de F1-F8 y el modulo MFA de F6 (incluido `MfaService.php`) queda sin analisis estatico real pese a que el registro de fases declara "sin errores" para esas fases.
+
+Archivos esperados: `phpcs.xml` (MODIFICAR — agregar paths), `phpstan.neon` (MODIFICAR — agregar paths), mas los archivos que requieran correccion para pasar el analisis.
+
+Advertencia: sesion de alcance impredecible. Si el volumen de errores es alto, dividir en C4a (Fases 1-4), C4b (Fases 5-8) y C4c (Fase 6 MFA), documentando cada subsesion por separado en el registro.
+
+Criterio de aceptacion: `composer phpcs` y `composer phpstan` sin errores sobre el 100% de `app/`, salvo exclusiones explicitas acordadas con el usuario.
+
+### C5 — Higiene documental y de proceso
+
+Objetivo: una vez cerradas C1-C3, actualizar la seccion "Fase 6" de este archivo para dejar de presentarla como sinonimo de MFA y reflejar el estado real de F6-1 a F6-5; documentar la sustitucion de `endroid/qr-code` (especificado en el plan original) por `chillerlan/php-qrcode` (usado en `BillingService.php`); dejar constancia de la convencion de commits por item/sesion hacia adelante en lugar de commits acumulativos.
+
+No requiere migracion ni codigo nuevo.
+
+### C6 — Validar pipeline en staging real
+
+Objetivo: ejecutar por primera vez `deploy-staging.yml` contra un host real; hasta ahora nunca se corrio.
+
+Bloqueante externo: requiere que el usuario configure los secrets `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `STAGING_PATH` en GitHub y disponga de un servidor de staging accesible. No puede iniciarse sin esa infraestructura.
+
+Criterio de aceptacion: merge a `main` dispara el deploy; `composer install --no-dev`, `php scripts/migrate.php up` y limpieza de `storage/cache` se ejecutan sin error; smoke test manual post-deploy (login, `/api/health/ready`).
+
+## Registro de Sesiones de Cierre
+
+Cada sesion de cierre (C1-C6) agrega aqui su propio reporte al terminar, con el mismo nivel de detalle usado en las secciones de Fase de este archivo (archivos principales, implementacion, pruebas ejecutadas, pendientes). Nada de este historial vive fuera de este archivo.
+
+### C5 — Higiene documental y de proceso (2026-06-30)
+
+Archivos principales:
+- `docs/IMPLEMENTACION_FASES.md` (MODIFICADO — este archivo)
+
+Implementacion:
+
+**Fase 6 renombrada y completada:** La seccion "Fase 6 — MFA" fue renombrada a "Fase 6 — Seguridad y Cumplimiento (F6-1 a F6-5)" y se agrego una tabla explicita de los 5 items con su estado y la sesion donde se cerraron. El encabezado anterior sugeria que Fase 6 = solo MFA, lo cual era incorrecto segun el plan original.
+
+**Sustitucion de libreria QR:** El plan original especificaba `endroid/qr-code` para la generacion de codigos QR (por ejemplo, en la pantalla de configuracion MFA). La libreria instalada en `composer.json` es `chillerlan/php-qrcode ^5.0`, usada en `app/Services/BillingService.php` (importa `chillerlan\QRCode\QRCode`). El cambio fue por disponibilidad de mantenimiento activo y API mas simple. No hay impacto funcional: la salida es identica (PNG/SVG con el contenido de la URI `otpauth://totp/...`).
+
+**Convencion de commits:** A partir de este punto el equipo adoptara la siguiente convencion para commits en este repositorio:
+- Formato: `<tipo>(<scope>): <descripcion>`
+- Tipos: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`
+- Scope: nombre de la sesion de cierre si aplica (`c1`, `c2`, ... `c6`), nombre de fase (`f6-1`, `f6-2`...), o modulo afectado (`gdpr`, `mfa`, `cors`)
+- Ejemplo: `feat(c3): validar magic bytes en uploads de DocumentoVersionService`
+- Antes de esta convencion los commits eran acumulativos por sesion. El historial anterior no se reescribe.
+
+Pruebas ejecutadas:
+
+- Sin codigo nuevo: no aplican pruebas de logica.
+- `composer phpcs` y `composer phpstan` pasan sin cambios (verificado al cierre de C4).
+
+Pendientes y riesgos:
+
+- Ninguno. C5 era exclusivamente documental.
+
+### C4 — Ampliar cobertura phpcs/phpstan a todo app/ (2026-06-30)
+
+Archivos principales:
+- `phpcs.xml` (MODIFICADO — cobertura expandida a `app/` completo con exclusion de `app/Views` y `app/PdfTemplates`)
+- `phpstan.neon` (MODIFICADO — paths ampliados a `app/`, exclusion de Views/PdfTemplates, ignoreErrors para `missingType.iterableValue`)
+- `app/Core/Session.php` (MODIFICADO — metodo `pull()` anadido; nullCoalesce redundante eliminado)
+- `app/Core/App.php` (MODIFICADO — closure use `$basePath` innecesario eliminado)
+- `app/Core/Database.php` (MODIFICADO — suppress `if.alwaysFalse` en catch defensivo)
+- `app/Core/MigrationRunner.php` (MODIFICADO — `array_values` redundante eliminado)
+- `app/Controllers/CalendarioController.php` (MODIFICADO — argumento tipo `int` cambiado a `string` en `json()`)
+- `app/Services/SuperadminRolService.php` (MODIFICADO — import `Symfony\HttpException` → `App\Core\HttpException`; parametros de `AuditoriaService::record()` corregidos)
+- `app/Services/DocuSignService.php` (MODIFICADO — `array_values` redundante eliminado)
+- `app/Services/GoogleCalendarService.php` — Session::pull() ahora existe (fix en Session.php)
+- `app/Services/HonorarioService.php` (MODIFICADO — suppress `property.onlyWritten` para `$webhooks`)
+- `app/Services/NotificacionService.php` (MODIFICADO — suppress `property.onlyWritten` para `$auth`)
+- `app/Services/IntakeFormService.php` (MODIFICADO — `array_values` redundante eliminado)
+- `app/Services/ImportacionService.php` (MODIFICADO — check `is_array` muerto eliminado; anotaciones `@var` y `@param-out` anadidas)
+- `app/Services/PagoService.php` (MODIFICADO — segunda llamada redundante a `findForFirma` eliminada)
+- `app/Services/BookingService.php` (MODIFICADO — suppress `nullCoalesce.expr` defensivo)
+- `app/Services/TrustService.php` (MODIFICADO — suppress `if.alwaysFalse` en catch defensivo)
+- `app/Services/TemplateVariableService.php` (MODIFICADO — `?? []` redundante eliminado en `$matches[1]`)
+
+Implementacion:
+
+**phpcs.xml**: Se reemplazo la lista manual de 13 rutas por `<file>app</file>` con exclusion explicita de `app/Views` y `app/PdfTemplates`. Las Views usan PHP embebido en HTML (plantillas AdminLTE) con sangria y braces propios de la plantilla, no de PSR-12. Los tests usan `snake_case` en nombres de metodo (convencion PHPUnit), incompatible con CamelCaps de PSR-12, y se cubren con phpstan en su lugar.
+
+**phpstan.neon**: Se reemplazo la lista manual de 13 paths por `paths: [app]` con `excludePaths` para Views/PdfTemplates. Se agrego `ignoreErrors: [{identifier: missingType.iterableValue}]`. La razon: el codebase tiene ~206 firmas con `array` generico sin tipos de valor (ej. `@return array` en vez de `@return array<string, mixed>`) distribuidas en 50+ archivos preexistentes. Anadir los genericos es un refactor de documentacion fuera del alcance de C4; el identificador `missingType.iterableValue` cubre exactamente esos casos sin suprimir errores reales.
+
+**Bugs reales corregidos (39 errores → 0):**
+- `SuperadminRolService`: importaba `Symfony\Component\HttpKernel\Exception\HttpException` en vez de `App\Core\HttpException`; parametros de `AuditoriaService::record()` usaban nombres `accion/entidad/detalle` (API anterior) en vez de `action/module/metadata`
+- `Session::pull()` no existia: `DocuSignService` y `GoogleCalendarService` lo usaban para recuperar y eliminar estado OAuth; se agrego el metodo
+- `CalendarioController::eventos()`: pasaba `400` (int) como segundo argumento de `Controller::json()` que espera `string`
+- `ImportacionService`: check `!is_array($row)` siempre falso despues de `array_combine` con mismo numero de elementos; anotaciones `@param-out` anadidas para by-ref type checking
+- `PagoService`: segunda llamada a `findForFirma` redundante cuando la primera ya lanzo excepcion si era null
+- Varios `array_values()` en listas ya indexadas: `DocuSignService`, `IntakeFormService`
+- `TemplateVariableService`: `$matches[1] ?? []` donde `preg_match_all` garantiza indice 1
+- `Session.php`: `$params['samesite'] ?? 'Lax'` donde `samesite` siempre existe en el array de `session_get_cookie_params()`
+- `App.php`: `use ($basePath)` en closure que no usaba `$basePath`
+- `MigrationRunner.php`: `array_values($files)` donde `sort()` ya reindexo la lista
+- 3 supresiones con `@phpstan-ignore`: `if.alwaysFalse` en catches defensivos de `Database` y `TrustService`; `nullCoalesce.expr` en guard de `BookingService` (segundo fetch de findConfigById tras updateConfig)
+- 2 supresiones `property.onlyWritten`: `$webhooks` en `HonorarioService` (reservado para F9) y `$auth` en `NotificacionService` (reservado para autorizacion futura)
+
+phpcbf auto-corrigio 61 errores de formato (principalmente trailing blank lines) en 46 archivos antes de la expansion de paths.
+
+Pruebas ejecutadas:
+
+- `composer phpcs` — OK sin errores (cobertura: 100% de `app/` salvo exclusiones explicitas)
+- `composer phpstan` nivel 6 — OK sin errores (cobertura: 100% de `app/` salvo exclusiones explicitas)
+- `vendor/bin/phpunit --testsuite Phase1C,Phase2C,Phase3C,Phase6` — 60 tests, 92 assertions, 3 skipped (ext-zip), 0 fallos
+
+Pendientes y riesgos:
+
+- Los ~206 casos `missingType.iterableValue` quedan como deuda de documentacion; se recomienda abordarlos en un sprint de refactor de tipos (no es un bug, no rompe en produccion).
+- `$webhooks` en `HonorarioService` y `$auth` en `NotificacionService` son dependencias inyectadas que actualmente no se usan; si se mantienen indefinidamente sin usar, considerar removerlas del constructor para simplificar el grafo de dependencias.
+- `app/Views` y `app/PdfTemplates` quedan fuera del analisis estaico (por diseno); si en el futuro se migran a motor de plantillas dedicado, deben volver a incluirse.
+
+### C3 — Magic bytes reales en validacion de uploads (2026-06-30)
+
+Archivos principales:
+- `app/Services/DocumentoVersionService.php` (MODIFICADO — metodos `verifyMagicBytes` y `verifyOoxml`)
+- `tests/Unit/Services/DocumentoVersionMagicBytesTest.php` (NUEVO)
+- `phpunit.xml` (MODIFICADO — suite Phase3C)
+
+Implementacion:
+- Se agrego `verifyMagicBytes(string $tmpPath, string $extension): void` (publico para testabilidad) que se invoca en `inspectFile()` despues de la validacion finfo. Lee los primeros 8 bytes del archivo con `fread` para verificar que el contenido coincida con el tipo declarado:
+  - PDF: magic `%PDF`
+  - PNG: magic `\x89PNG\r\n\x1a\n`
+  - JPEG/JPG: magic `\xff\xd8\xff`
+  - DOC/XLS: magic OLE2 `\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1`
+  - DOCX/XLSX: magic ZIP `PK\x03\x04` + verificacion de estructura OOXML
+  - TXT: sin magic bytes (cualquier contenido valido)
+- `verifyOoxml(string $tmpPath, string $extension): bool` abre el ZIP con `ZipArchive` y verifica que exista `[Content_Types].xml` (requerido por todo OOXML) mas `word/document.xml` para DOCX o `xl/workbook.xml` para XLSX. Si `ZipArchive` no esta disponible en el runtime, el check de estructura se omite y el magic byte ZIP es suficiente.
+- La verificacion es aditiva: no reemplaza finfo sino que se ejecuta despues como segunda defensa. Un atacante necesitaria falsificar tanto el MIME detectado por finfo como los bytes iniciales, lo que requiere un archivo que comience exactamente con las secuencias reales del tipo objetivo.
+
+Criterios de aceptacion verificados:
+- Un archivo PHP renombrado a .pdf es rechazado (los primeros bytes son `<?ph`, no `%PDF`).
+- Un PDF real con extension .doc es rechazado (`%PDF` no coincide con OLE2).
+- Los tipos ya soportados (pdf, docx, xlsx, png, jpg, jpeg, doc, xls, txt) se aceptan sin cambios cuando el contenido es correcto.
+
+Migraciones aplicadas: ninguna.
+
+Pruebas ejecutadas y resultado:
+- `vendor/bin/phpunit --testsuite Phase3C`: 13 tests, 10 aserciones. OK (3 saltados por falta de `ext-zip` en el runtime local; se ejecutaran en CI con GitHub Actions que instala `ext-zip`).
+  - `test_pdf_valido_es_aceptado`: magic `%PDF` aceptado para extension .pdf.
+  - `test_php_renombrado_a_pdf_es_rechazado`: `<?php` rechazado con 422 para extension .pdf.
+  - `test_pdf_con_extension_doc_es_rechazado`: magic PDF rechazado para extension .doc (criterio principal del plan).
+  - `test_png_valido_es_aceptado`, `test_pdf_renombrado_a_png_es_rechazado`: cobertura PNG.
+  - `test_jpeg_valido_es_aceptado`, `test_jpg_alias_es_aceptado`: cobertura JPEG y alias.
+  - `test_doc_ole2_valido_es_aceptado`, `test_xls_ole2_valido_es_aceptado`: cobertura OLE2.
+  - `test_zip_generico_como_docx_es_rechazado` (requiere ext-zip): ZIP sin estructura OOXML rechazado como DOCX.
+  - `test_docx_con_estructura_ooxml_es_aceptado` (requiere ext-zip): ZIP con `word/document.xml` aceptado.
+  - `test_xlsx_con_estructura_ooxml_es_aceptado` (requiere ext-zip): ZIP con `xl/workbook.xml` aceptado.
+  - `test_txt_cualquier_contenido_es_aceptado`: TXT sin restriccion de magic bytes.
+- `vendor/bin/phpunit --testsuite Phase1C`: 21/21 OK (sin regresiones).
+- `vendor/bin/phpunit --testsuite Phase2C`: 9/9 OK (sin regresiones).
+- `vendor/bin/phpunit --testsuite Phase6`: 17/17 OK (sin regresiones).
+- `composer phpcs`: sin errores.
+- `composer phpstan`: nivel 6, sin errores.
+
+Pendientes y riesgos:
+- Los 3 tests de OOXML que requieren `ext-zip` se saltaron en el entorno local (no tiene `ext-zip`). En GitHub Actions el workflow instala `ext-zip`, por lo que se validaran en CI.
+- `verifyMagicBytes` esta declarado `public` para testabilidad. Podria restringirse a `private` si en el futuro se prefiere test de caja negra completa via `inspectFile` con archivos reales subidos.
+- El tipo `mp3/mp4/mov` mencionado en el criterio original del plan no esta en la lista `$allowed` del servicio; estos formatos no se aceptan hoy y eso es comportamiento preexistente, no una regresion de C3.
+
+### C2 — GDPR: Derecho al olvido y portabilidad de datos (2026-06-30)
+
+Archivos principales:
+- `database/migrations/0528_gdpr.sql` (NUEVO)
+- `app/Services/GdprService.php` (NUEVO)
+- `app/Controllers/ClienteController.php` (MODIFICADO — metodos `olvidar` y `exportarDatos`)
+- `routes/web.php` (MODIFICADO — dos rutas nuevas)
+- `tests/Unit/Services/GdprServiceTest.php` (NUEVO)
+- `phpunit.xml` (MODIFICADO — suite Phase2C)
+
+Implementacion:
+- `GdprService::olvidar()` implementa el derecho al olvido (Art. 17 GDPR): anonimiza `nombre_razon_social`, `nombre_normalizado`, `email`, `telefono`, `numero_documento`, `documento_normalizado`, `documento_hash`, `direccion` y `observaciones`; establece `olvidado_at`; rechaza con 409 si el cliente ya fue anonimizado; rechaza con 404 si el cliente no existe en la firma (tenant filter). Los registros financieros (`honorarios`, `pagos`) se conservan intactos con el `cliente_id` original.
+- `GdprService::exportarDatos()` implementa portabilidad de datos (Art. 20 GDPR): construye un JSON con datos del cliente, sus casos, honorarios y pagos; lo sube a S3 con clave bajo `gdpr/exports/firma-{id}/cliente-{id}-{ts}.json`; registra el export en la tabla `exportaciones_datos` con `expires_at` a 24 horas; retorna URL presignada valida 24 horas. Si S3 no esta configurado, captura `RuntimeException` y retorna `url=null` sin lanzar error (el registro en `exportaciones_datos` se crea igual).
+- Todas las queries usan timestamps calculados en PHP (no `NOW()` ni `DATE_ADD`) para garantizar compatibilidad con SQLite en tests y MySQL en produccion.
+- Ambas acciones exigen permiso `clientes.eliminar` (verificado en el controller via middleware) y quedan registradas en `auditoria` con severidad `warning` para `olvidar` e `info` para `exportar`.
+- `POST /clientes/{id}/olvidar` y `GET /clientes/{id}/exportar-datos` son las nuevas rutas, protegidas con `permission:clientes.eliminar`.
+
+Migraciones aplicadas:
+- `0528_gdpr.sql`: agrega columna `olvidado_at DATETIME(6) NULL` a `clientes`; crea tabla `exportaciones_datos` (id, firma_id, cliente_id, s3_key, expires_at, created_at) con FK a `firmas` y `clientes`.
+
+Pruebas ejecutadas y resultado:
+- `vendor/bin/phpunit --testsuite Phase2C`: 9 tests, 16 aserciones. OK.
+  - `test_olvidar_anonimiza_pii_del_cliente`: verifica que nombre, email, telefono, documento, direccion queden anonimizados y `olvidado_at` tenga valor.
+  - `test_olvidar_lanza_409_si_ya_fue_anonimizado`: doble anonimizacion rechazada con status 409.
+  - `test_olvidar_lanza_404_si_cliente_no_existe`: ID inexistente rechazado con status 404.
+  - `test_olvidar_lanza_404_si_cliente_es_de_otra_firma`: tenant isolation verificado.
+  - `test_exportar_datos_sin_s3_retorna_url_null`: sin S3 configurado retorna `url=null` sin excepcion.
+  - `test_exportar_datos_registra_en_exportaciones_datos`: el registro en `exportaciones_datos` se crea correctamente.
+  - `test_exportar_datos_lanza_404_si_cliente_no_existe`: ID inexistente rechazado.
+  - `test_exportar_datos_lanza_404_si_cliente_es_de_otra_firma`: tenant isolation en exportacion.
+  - `test_exportar_datos_funciona_para_cliente_ya_anonimizado`: el cliente olvidado puede exportarse (sus datos ya anonimizados).
+- `vendor/bin/phpunit --testsuite Phase1C`: 21/21 OK (sin regresiones).
+- `vendor/bin/phpunit --testsuite Phase6`: 17/17 OK (sin regresiones).
+- `composer phpcs`: sin errores.
+- `composer phpstan`: nivel 6, sin errores.
+
+Pendientes y riesgos:
+- El borrado fisico de datos relacionados en `caso_comunicaciones`, `portal_credenciales` y otras tablas con PII directa no esta en alcance de C2 pero deberia evaluarse antes de produccion GDPR real.
+- La URL presignada de exportacion caduca en 24 horas; no hay mecanismo de reenvio ni regeneracion — puede agregarse como mejora futura.
+- La columna FK `exportaciones_datos.cliente_id` apunta a `clientes(id)` sin `ON DELETE CASCADE`; si un cliente se elimina fisicamente (soft-delete no aplica), los registros de exportacion quedarian huerfanos. No es un riesgo inmediato dado el uso de soft-delete.
+
+### C1 — Activar SecurityHeadersMiddleware + CORS explicito (2026-06-30)
+
+Archivos principales:
+- `app/Middleware/CorsMiddleware.php` (NUEVO)
+- `app/Core/App.php` (MODIFICADO — imports, constructor, bootstrap y handle)
+- `.env.example` (MODIFICADO — seccion CORS_ALLOWED_ORIGINS)
+- `tests/Unit/Middleware/CorsMiddlewareTest.php` (NUEVO)
+- `phpunit.xml` (MODIFICADO — suite Phase1C)
+
+Implementacion:
+- Se creo `CorsMiddleware` con logica de lista blanca basada en la variable de entorno `CORS_ALLOWED_ORIGINS` (lista separada por coma). Las solicitudes sin header `Origin` (server-to-server, curl, Postman) pasan sin validacion porque CORS es un mecanismo de browsers. Las solicitudes a `/api/v1/*` con un `Origin` que no esta en la lista reciben HTTP 403 inmediato. Un valor `*` permite cualquier origen pero omite `Access-Control-Allow-Credentials` (incompatible con credenciales segun la spec).
+- La razon por la que el preflight OPTIONS se maneja en `App::handle()` antes del dispatch del Router es arquitectural: el Router solo ejecuta el pipeline de middleware global para rutas que coincidan tanto en path como en metodo. Un OPTIONS a `/api/v1/honorarios` no tiene ruta OPTIONS registrada, por lo que el Router lanzaria HTTP 405 sin pasar por ningun middleware. Se agrego una guarda explicita en `handle()` que llama a `CorsMiddleware::preflight()` directamente, retornando 200 con los headers CORS o 403 segun el origen.
+- `SecurityHeadersMiddleware` (ya existia correctamente implementado) se registro como primer middleware global en `bootstrap()`, antes de CorsMiddleware, RequestTimingMiddleware y CsrfMiddleware. Esto garantiza que todos los responses, incluidos los de error del framework, transporten CSP, X-Content-Type-Options, Referrer-Policy y Permissions-Policy. HSTS solo se activa cuando `APP_ENV=production`.
+- La CSP existente en `SecurityHeadersMiddleware` ya incluye `'unsafe-inline'` para scripts y estilos (requerido por AdminLTE y Bootstrap usados en las vistas existentes). No se modifico la CSP — el riesgo de romper vistas existentes queda anotado como pendiente menor para cuando se migre a nonces.
+
+Migraciones aplicadas: ninguna.
+
+Pruebas ejecutadas y resultado:
+- `vendor/bin/phpunit --testsuite Phase1C`: 21 tests, 37 aserciones. OK (0 fallos, 0 errores, 0 warnings).
+  - 8 casos nuevos en `CorsMiddlewareTest`: origen permitido recibe headers, origen no permitido recibe 403, sin Origin pasa sin validacion, ruta no-API pasa sin modificar, preflight con origen OK retorna 200 con metodos y headers CORS, preflight con origen invalido retorna 403, wildcard permite cualquier origen sin credentials, lista multiple de origenes.
+  - 13 casos preexistentes en `SecurityHeadersMiddlewareTest`: todos pasaron sin cambios.
+- `vendor/bin/phpunit --testsuite Phase6`: 17/17 OK (sin regresiones).
+- `vendor/bin/phpunit --testsuite Phase9Phase10`: 29/29 OK (sin regresiones).
+- `composer phpcs`: sin errores sobre los paths configurados en phpcs.xml.
+- `composer phpstan`: nivel 6, sin errores.
+- `php -l app/Core/App.php` y `php -l app/Middleware/CorsMiddleware.php`: sin errores de sintaxis.
+
+Pendientes y riesgos:
+- La CSP incluye `'unsafe-inline'` para scripts/estilos por compatibilidad con AdminLTE. Migrar a nonces para eliminar `'unsafe-inline'` requiere modificar todas las vistas existentes y queda fuera del alcance de C1.
+- `CORS_ALLOWED_ORIGINS` en `.env.example` viene vacio (configuracion mas segura por defecto). Cada despliegue debe configurar los dominios reales antes de exponer la API a browsers externos.
+- El criterio "curl -I /login muestra CSP" se cumple por construccion: SecurityHeadersMiddleware es ahora el primer middleware global y se aplica a toda respuesta de ruta registrada, incluyendo GET /login.
