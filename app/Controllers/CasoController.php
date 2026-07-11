@@ -9,6 +9,7 @@ use App\Core\HttpException;
 use App\Core\Request;
 use App\Core\Response;
 use App\Services\CatalogoLookupService;
+use App\Services\CasoEtapaService;
 use App\Services\CasoService;
 use App\Services\ClienteService;
 use App\Services\UsuarioService;
@@ -69,6 +70,24 @@ final class CasoController extends Controller
         $this->container->get(CasoService::class)->update($this->firmaId(), (int) $id, (array) $request->input(), $request);
 
         return $this->json(null, 'Caso actualizado correctamente.');
+    }
+
+    /**
+     * Contrato JSON:
+     * PATCH /casos/{id}/stage
+     * Body: { "etapa_id": int }
+     * Response: { ok, message, data: {}, errors: {} }
+     */
+    public function stage(Request $request, string $id): Response
+    {
+        $this->container->get(CasoEtapaService::class)->avanzarEtapa(
+            $this->firmaId(),
+            (int) $id,
+            (int) $request->input('etapa_id', 0),
+            $request
+        );
+
+        return $this->json(null, 'Etapa del caso actualizada correctamente.');
     }
 
     public function close(Request $request, string $id): Response

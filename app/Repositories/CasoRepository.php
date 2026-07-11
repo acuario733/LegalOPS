@@ -33,8 +33,8 @@ final class CasoRepository extends BaseRepository
 
         $offset = max(0, ($page - 1) * $perPage);
         $query = $this->pdo->prepare(
-            'SELECT c.id,c.firma_id,c.cliente_id,c.responsable_usuario_id,c.titulo,c.estado,c.prioridad,
-                    c.tipo_proceso,c.jurisdiccion,c.despacho,c.radicado,c.fecha_apertura,c.closed_at,c.created_at,
+            'SELECT c.id,c.firma_id,c.numero,c.cliente_id,c.responsable_usuario_id,c.titulo,c.estado,c.prioridad,
+                    c.etapa_actual_id,c.tipo_proceso,c.jurisdiccion,c.despacho,c.radicado,c.fecha_apertura,c.closed_at,c.created_at,
                     cl.nombre_razon_social AS cliente_nombre, u.nombre AS responsable_nombre
              FROM casos c
              INNER JOIN clientes cl ON cl.id=c.cliente_id AND cl.firma_id=c.firma_id
@@ -120,10 +120,10 @@ final class CasoRepository extends BaseRepository
     {
         $statement = $this->pdo->prepare(
             'INSERT INTO casos
-            (firma_id,cliente_id,responsable_usuario_id,titulo,titulo_normalizado,descripcion,estado,prioridad,
+            (firma_id,numero,cliente_id,responsable_usuario_id,titulo,titulo_normalizado,descripcion,estado,prioridad,
              tipo_proceso,jurisdiccion,despacho,radicado,fecha_apertura,created_at,updated_at)
              VALUES
-            (:firma_id,:cliente_id,:responsable_usuario_id,:titulo,:titulo_normalizado,:descripcion,:estado,:prioridad,
+            (:firma_id,:numero,:cliente_id,:responsable_usuario_id,:titulo,:titulo_normalizado,:descripcion,:estado,:prioridad,
              :tipo_proceso,:jurisdiccion,:despacho,:radicado,:fecha_apertura,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))'
         );
         $statement->execute($data);
@@ -175,6 +175,31 @@ final class CasoRepository extends BaseRepository
              WHERE id=:id AND firma_id=:firma_id AND estado IN (\'cerrado\',\'archivado\') AND deleted_at IS NULL'
         );
         $statement->execute(['id' => $id, 'firma_id' => $firmaId]);
+    }
+
+    public function nextCaseNumber(int $firmaId, int $year): string
+    {
+        // TENANT FILTER: firma_id = ?
+        $statement = $this->pdo->prepare(
+            'INSERT INTO caso_secuencias (firma_id,anio,ultimo_numero,updated_at)
+             VALUES (:firma_id,:anio,LAST_INSERT_ID(1),CURRENT_TIMESTAMP(6))
+             ON DUPLICATE KEY UPDATE ultimo_numero=LAST_INSERT_ID(ultimo_numero + 1), updated_at=CURRENT_TIMESTAMP(6)'
+        );
+        $statement->execute(['firma_id' => $firmaId, 'anio' => $year]);
+        $next = (int) $this->pdo->query('SELECT LAST_INSERT_ID()')->fetchColumn();
+
+        return sprintf('%d-%04d', $year, $next);
+    }
+
+    public function setCurrentStage(int $firmaId, int $id, int $stageId): void
+    {
+        // TENANT FILTER: firma_id = ?
+        $statement = $this->pdo->prepare(
+            'UPDATE casos
+             SET etapa_actual_id=:etapa_actual_id, updated_at=CURRENT_TIMESTAMP(6)
+             WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
+        );
+        $statement->execute(['etapa_actual_id' => $stageId, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     private function normalizeText(string $value, int $max): string

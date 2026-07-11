@@ -22,7 +22,9 @@ final class CasoService
         private readonly LimitePlanService $limits,
         private readonly AuditoriaService $audit,
         private readonly Auth $auth,
-        private readonly CatalogoLookupService $catalogs
+        private readonly CatalogoLookupService $catalogs,
+        private readonly CasoEtapaService $etapas,
+        private readonly ?WebhookService $webhooks = null
     ) {
     }
 
@@ -39,7 +41,10 @@ final class CasoService
     /** @return array<string, mixed> */
     public function find(int $firmaId, int $id): array
     {
-        return $this->repository->findForFirma($firmaId, $id) ?? throw new HttpException(404, 'El caso no existe en la firma.');
+        $case = $this->repository->findForFirma($firmaId, $id) ?? throw new HttpException(404, 'El caso no existe en la firma.');
+        $case['etapas'] = $this->etapas->getEtapas($firmaId, $id);
+
+        return $case;
     }
 
     /** @param array<string, mixed> $data */
@@ -52,12 +57,16 @@ final class CasoService
         if (!$this->validator->validateData($normalized)) {
             throw new HttpException(422, 'Revise los datos del caso.', $this->validator->errors());
         }
-        $id = $this->repository->create($this->recordData($normalized));
+        $normalized['numero'] = $this->repository->nextCaseNumber($firmaId, (int) date('Y'));
+        $id = $this->repository->create($this->recordData($normalized) + ['numero' => $normalized['numero']]);
+        $this->etapas->crearEtapas($firmaId, $id, $this->etapas->defaultStages($normalized['tipo_proceso']));
         $this->audit->record('CASO_CREADO', 'casos', 'caso', $id, [
+            'numero' => $normalized['numero'],
             'cliente_id' => $normalized['cliente_id'],
             'responsable_usuario_id' => $normalized['responsable_usuario_id'],
             'radicado' => $normalized['radicado'],
         ], $request, $firmaId);
+        $this->webhooks?->dispatch($firmaId, 'matter.created', ['id' => $id, 'numero' => $normalized['numero']]);
 
         return $id;
     }
@@ -77,6 +86,7 @@ final class CasoService
             'anterior' => ['estado' => $before['estado'], 'cliente_id' => $before['cliente_id'], 'responsable_usuario_id' => $before['responsable_usuario_id']],
             'nuevo' => ['estado' => $normalized['estado'], 'cliente_id' => $normalized['cliente_id'], 'responsable_usuario_id' => $normalized['responsable_usuario_id']],
         ], $request, $firmaId);
+        $this->webhooks?->dispatch($firmaId, 'matter.updated', ['id' => $id, 'estado' => $normalized['estado']]);
     }
 
     public function close(int $firmaId, int $id, string $reason, Request $request): void
@@ -88,6 +98,7 @@ final class CasoService
         }
         $this->repository->close($firmaId, $id, (int) $this->auth->id(), mb_substr($data['motivo'], 0, 500));
         $this->audit->record('CASO_CERRADO', 'casos', 'caso', $id, ['estado_anterior' => $case['estado']], $request, $firmaId, 'warning');
+        $this->webhooks?->dispatch($firmaId, 'matter.closed', ['id' => $id, 'motivo' => mb_substr($reason, 0, 500)]);
     }
 
     public function archive(int $firmaId, int $id, string $reason, Request $request): void
