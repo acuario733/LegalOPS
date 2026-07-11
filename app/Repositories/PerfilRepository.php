@@ -145,6 +145,11 @@ final class PerfilRepository extends BaseRepository
     /** @param array<string, mixed> $data */
     public function updatePersonal(int $userId, array $data): void
     {
+        // Nota (Sesion 7, 2026-07-11): timestamp calculado en PHP en vez de
+        // CURRENT_TIMESTAMP(6) para que sea compatible con SQLite en pruebas
+        // unitarias, siguiendo la convencion ya documentada en la sesion GDPR
+        // (docs/IMPLEMENTACION_FASES.md, seccion C2). Mismo valor efectivo en MySQL.
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE usuarios
              SET nombre = :nombre,
@@ -154,28 +159,30 @@ final class PerfilRepository extends BaseRepository
                  numero_documento = :numero_documento,
                  numero_documento_normalizado = :numero_documento_normalizado,
                  telefono = :telefono,
-                 updated_at = CURRENT_TIMESTAMP(6)
+                 updated_at = :updated_at
              WHERE id = :id
                AND deleted_at IS NULL'
         );
-        $statement->execute($data + ['id' => $userId]);
+        $statement->execute($data + ['updated_at' => $now, 'id' => $userId]);
     }
 
     public function updatePhotoPath(int $userId, ?string $path): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE usuarios
              SET foto_perfil_path = :foto_perfil_path,
-                 updated_at = CURRENT_TIMESTAMP(6)
+                 updated_at = :updated_at
              WHERE id = :id
                AND deleted_at IS NULL'
         );
-        $statement->execute(['foto_perfil_path' => $path, 'id' => $userId]);
+        $statement->execute(['foto_perfil_path' => $path, 'updated_at' => $now, 'id' => $userId]);
     }
 
     /** @param array<string, mixed> $data */
     public function updateProfessional(int $userId, array $data): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE usuarios
              SET es_abogado = :es_abogado,
@@ -186,11 +193,11 @@ final class PerfilRepository extends BaseRepository
                  fecha_verificacion_tarjeta = NULL,
                  usuario_verificador_tarjeta_id = NULL,
                  observacion_verificacion_tarjeta = NULL,
-                 updated_at = CURRENT_TIMESTAMP(6)
+                 updated_at = :updated_at
              WHERE id = :id
                AND deleted_at IS NULL'
         );
-        $statement->execute($data + ['id' => $userId]);
+        $statement->execute($data + ['updated_at' => $now, 'id' => $userId]);
     }
 
     public function findPasswordHash(int $userId): ?string

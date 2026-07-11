@@ -131,29 +131,35 @@ final class RolRepository extends BaseRepository
     /** @param list<int> $permissionIds */
     public function syncPermissions(int $firmaId, int $roleId, array $permissionIds): void
     {
+        // Nota (Sesion 7, 2026-07-11): timestamp calculado en PHP en vez de
+        // CURRENT_TIMESTAMP(6) para que sea compatible con SQLite en pruebas
+        // unitarias, siguiendo la convencion ya documentada en la sesion GDPR
+        // (docs/IMPLEMENTACION_FASES.md, seccion C2). Mismo valor efectivo en MySQL.
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $delete = $this->pdo->prepare('DELETE FROM rol_permiso WHERE firma_id=:firma_id AND rol_id=:rol_id');
         $delete->execute(['firma_id' => $firmaId, 'rol_id' => $roleId]);
         $insert = $this->pdo->prepare(
             'INSERT INTO rol_permiso (firma_id,rol_id,permiso_id,created_at)
-             SELECT :firma_id,:rol_id,p.id,CURRENT_TIMESTAMP(6) FROM permisos p WHERE p.id=:permiso_id'
+             SELECT :firma_id,:rol_id,p.id,:created_at FROM permisos p WHERE p.id=:permiso_id'
         );
         foreach (array_unique($permissionIds) as $permissionId) {
-            $insert->execute(['firma_id' => $firmaId, 'rol_id' => $roleId, 'permiso_id' => $permissionId]);
+            $insert->execute(['firma_id' => $firmaId, 'rol_id' => $roleId, 'created_at' => $now, 'permiso_id' => $permissionId]);
         }
     }
 
     /** @param list<int> $roleIds */
     public function syncUserRoles(int $firmaId, int $userId, array $roleIds): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $delete = $this->pdo->prepare('DELETE FROM usuario_roles WHERE firma_id=:firma_id AND usuario_id=:usuario_id');
         $delete->execute(['firma_id' => $firmaId, 'usuario_id' => $userId]);
         $insert = $this->pdo->prepare(
             'INSERT INTO usuario_roles (firma_id,usuario_id,rol_id,created_at)
-             SELECT :firma_id,:usuario_id,r.id,CURRENT_TIMESTAMP(6) FROM roles r
+             SELECT :firma_id,:usuario_id,r.id,:created_at FROM roles r
              WHERE r.id=:rol_id AND r.firma_id=:firma_check AND r.estado=\'activo\' AND r.deleted_at IS NULL'
         );
         foreach (array_unique($roleIds) as $roleId) {
-            $insert->execute(['firma_id' => $firmaId, 'usuario_id' => $userId, 'rol_id' => $roleId, 'firma_check' => $firmaId]);
+            $insert->execute(['firma_id' => $firmaId, 'usuario_id' => $userId, 'created_at' => $now, 'rol_id' => $roleId, 'firma_check' => $firmaId]);
         }
     }
 }

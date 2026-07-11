@@ -116,6 +116,11 @@ final class ClienteRepository extends BaseRepository
     /** @param array<string, mixed> $data */
     public function create(array $data): int
     {
+        // Nota (Sesion 7, 2026-07-11): timestamp calculado en PHP en vez de
+        // CURRENT_TIMESTAMP(6) para que sea compatible con SQLite en pruebas
+        // unitarias, siguiendo la convencion ya documentada en la sesion GDPR
+        // (docs/IMPLEMENTACION_FASES.md, seccion C2). Mismo valor efectivo en MySQL.
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'INSERT INTO clientes
             (firma_id, tipo_persona, nombre_razon_social, nombre_normalizado, tipo_documento,
@@ -126,9 +131,9 @@ final class ClienteRepository extends BaseRepository
             (:firma_id, :tipo_persona, :nombre_razon_social, :nombre_normalizado, :tipo_documento,
              :numero_documento, :documento_normalizado, :documento_hash, :email, :telefono, :direccion,
              :estado, :origen, :observaciones, :tratamiento_datos_autorizado, :autorizacion_tratamiento_at,
-             CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))'
+             :created_at, :updated_at)'
         );
-        $statement->execute($data);
+        $statement->execute($data + ['created_at' => $now, 'updated_at' => $now]);
 
         return (int) $this->pdo->lastInsertId();
     }
@@ -136,6 +141,7 @@ final class ClienteRepository extends BaseRepository
     /** @param array<string, mixed> $data */
     public function update(int $firmaId, int $id, array $data): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE clientes
              SET tipo_persona=:tipo_persona, nombre_razon_social=:nombre_razon_social,
@@ -145,33 +151,35 @@ final class ClienteRepository extends BaseRepository
                  estado=:estado, origen=:origen, observaciones=:observaciones,
                  tratamiento_datos_autorizado=:tratamiento_datos_autorizado,
                  autorizacion_tratamiento_at=:autorizacion_tratamiento_at,
-                 updated_at=CURRENT_TIMESTAMP(6)
+                 updated_at=:updated_at
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
-        $statement->execute($data + ['id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute($data + ['updated_at' => $now, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     public function softDelete(int $firmaId, int $id): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
-            'UPDATE clientes SET deleted_at=CURRENT_TIMESTAMP(6), updated_at=CURRENT_TIMESTAMP(6)
+            'UPDATE clientes SET deleted_at=:now1, updated_at=:now2
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
-        $statement->execute(['id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute(['now1' => $now, 'now2' => $now, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     /** @param array<string, mixed> $data */
     public function createAuthorization(array $data): int
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'INSERT INTO cliente_autorizaciones
             (firma_id, cliente_id, tipo, estado, medio, version_texto, evidencia_hash,
              observacion, registrado_por_usuario_id, created_at)
             VALUES
             (:firma_id, :cliente_id, :tipo, :estado, :medio, :version_texto, :evidencia_hash,
-             :observacion, :registrado_por_usuario_id, CURRENT_TIMESTAMP(6))'
+             :observacion, :registrado_por_usuario_id, :created_at)'
         );
-        $statement->execute($data);
+        $statement->execute($data + ['created_at' => $now]);
 
         return (int) $this->pdo->lastInsertId();
     }

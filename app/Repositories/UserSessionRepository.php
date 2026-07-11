@@ -83,11 +83,19 @@ final class UserSessionRepository extends BaseRepository
 
     public function revokeAllForUser(int $userId, string $reason): void
     {
+        // Nota (Sesion 7, 2026-07-11): timestamp calculado en PHP en vez de
+        // CURRENT_TIMESTAMP(6) para compatibilidad con SQLite en pruebas
+        // unitarias (antes de esta sesion este metodo nunca habia sido probado).
+        // Mismo valor efectivo en MySQL.
         $statement = $this->pdo->prepare(
-            'UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP(6),revoked_reason=:reason
+            'UPDATE user_sessions SET revoked_at=:revoked_at,revoked_reason=:reason
              WHERE usuario_id=:usuario_id AND revoked_at IS NULL'
         );
-        $statement->execute(['reason' => $reason, 'usuario_id' => $userId]);
+        $statement->execute([
+            'revoked_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s.u'),
+            'reason' => $reason,
+            'usuario_id' => $userId,
+        ]);
     }
 
     public function revokeAllForFirma(int $firmaId, string $reason): void

@@ -24,7 +24,8 @@ final class UsuarioService
         private readonly Database $database,
         private readonly AuditoriaService $audit,
         private readonly Auth $auth,
-        private readonly SensitiveDataService $sensitive
+        private readonly SensitiveDataService $sensitive,
+        private readonly UsuarioCambiosSensiblesService $cambiosSensibles
     ) {
     }
 
@@ -194,6 +195,125 @@ final class UsuarioService
                 $firmaId
             );
         });
+    }
+
+    /** Sesion 7 (RF-017): usuarios con tarjeta profesional pendiente de verificar. @return list<array<string, mixed>> */
+    public function pendingProfessionalCards(int $firmaId): array
+    {
+        return $this->repository->pendingProfessionalCards($firmaId);
+    }
+
+    /** Sesion 7 (RF-015): edicion de cargo separada de perfil y cuenta, con permiso propio (usuarios.editar_cargo). */
+    public function updateCargo(int $firmaId, int $id, string $cargo, Request $request): void
+    {
+        $before = $this->find($firmaId, $id);
+        $normalizedCargo = trim(preg_replace('/\s+/', ' ', $cargo) ?? '');
+        $normalizedCargo = $normalizedCargo === '' ? null : mb_substr($normalizedCargo, 0, 160);
+
+        $this->database->transaction(function () use ($firmaId, $id, $before, $normalizedCargo, $request): void {
+            $this->repository->updateCargo($firmaId, $id, $normalizedCargo);
+            $this->cambiosSensibles->registrar(
+                $firmaId,
+                $id,
+                $this->actorId(),
+                'cargo',
+                (string) ($before['cargo'] ?? ''),
+                (string) ($normalizedCargo ?? ''),
+                'usuarios',
+                $request
+            );
+            $this->audit->record('USUARIO_CARGO_MODIFICADO', 'usuarios', 'usuario', $id, ['origen' => 'usuarios'], $request, $firmaId);
+        });
+    }
+
+    /**
+     * Sesion 7 (RF-018): gestion de cuenta (email/tipo/estado) separada del perfil
+     * personal, con permiso propio (usuarios.editar_cuenta). No toca roles: eso
+     * sigue a cargo de RolController::assign (permiso roles.asignar), ya existente.
+     * @param array<string, mixed> $data
+     */
+    public function updateAccount(int $firmaId, int $id, array $data, Request $request): void
+    {
+        $before = $this->find($firmaId, $id);
+        $email = strtolower(trim((string) ($data['email'] ?? $before['email'])));
+        $tipo = (string) ($data['tipo'] ?? $before['tipo']);
+        $estado = (string) ($data['estado'] ?? $before['estado']);
+        $emailScope = 'firma:' . $firmaId . ':' . $email;
+
+        if (!in_array($estado, ['activo', 'inactivo'], true)) {
+            throw new HttpException(422, 'El estado de cuenta no es valido.', [
+                'estado' => ['Seleccione un estado de cuenta valido.'],
+            ]);
+        }
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new HttpException(422, 'El correo no es valido.', ['email' => ['Ingrese un correo valido.']]);
+        }
+        if ($this->repository->emailScopeExists($emailScope, $id)) {
+            throw new HttpException(409, 'El correo ya esta registrado en esta firma.', ['email' => ['El correo ya existe.']]);
+        }
+        if (
+            (string) $before['estado'] === 'activo'
+            && $estado === 'inactivo'
+            && $this->repository->hasRole($id, $firmaId, 'administrador')
+            && $this->repository->countActiveAdmins($firmaId) <= 1
+        ) {
+            throw new HttpException(409, 'No se puede dejar la firma sin un administrador activo.');
+        }
+
+        $this->database->transaction(function () use ($firmaId, $id, $before, $email, $emailScope, $tipo, $estado, $request): void {
+            $this->repository->updateAccountFields($firmaId, $id, $email, $email, $emailScope, $tipo);
+            if ((string) $before['estado'] !== $estado) {
+                $this->repository->setStatus($firmaId, $id, $estado);
+                if ($estado === 'inactivo') {
+                    $this->sessions->revokeAllForUser($id, 'usuario_desactivado');
+                }
+            }
+            $actorId = $this->actorId();
+            $this->cambiosSensibles->registrar($firmaId, $id, $actorId, 'email', (string) $before['email'], $email, 'usuarios', $request);
+            $this->cambiosSensibles->registrar($firmaId, $id, $actorId, 'tipo', (string) $before['tipo'], $tipo, 'usuarios', $request);
+            $this->cambiosSensibles->registrar($firmaId, $id, $actorId, 'estado', (string) $before['estado'], $estado, 'usuarios', $request);
+            $this->audit->record('USUARIO_CUENTA_MODIFICADA', 'usuarios', 'usuario', $id, [
+                'anterior' => ['email_hash' => hash('sha256', (string) $before['email']), 'tipo' => $before['tipo'], 'estado' => $before['estado']],
+                'nuevo' => ['email_hash' => hash('sha256', $email), 'tipo' => $tipo, 'estado' => $estado],
+                'origen' => 'usuarios',
+            ], $request, $firmaId, 'warning');
+        });
+    }
+
+    /**
+     * Sesion 7 (RF-014/RF-018): revoca todas las sesiones activas del usuario sin
+     * desactivarlo, con permiso propio (usuarios.revocar_sesiones). Distinto de
+     * deactivate(), que ademas cambia el estado a inactivo.
+     */
+    public function revokeSessions(int $firmaId, int $id, Request $request): void
+    {
+        $this->find($firmaId, $id);
+        $this->sessions->revokeAllForUser($id, 'revocado_por_administrador');
+        $this->audit->record('USUARIO_SESIONES_REVOCADAS', 'usuarios', 'usuario', $id, ['origen' => 'usuarios'], $request, $firmaId, 'warning');
+    }
+
+    /**
+     * Sesion 8 (RF-030 a RF-034): historial de cambios sensibles/administrativos de
+     * un usuario, con permiso propio (usuarios.ver_historial). Filtra siempre por
+     * la firma activa: un actor de la firma A nunca puede leer el historial de un
+     * usuario de la firma B, incluso conociendo su id.
+     * @return array{items: list<array<string, mixed>>, total: int}
+     */
+    public function history(int $firmaId, int $id, int $limit = 50, int $offset = 0): array
+    {
+        $this->find($firmaId, $id);
+
+        return $this->cambiosSensibles->historial($firmaId, $id, $limit, $offset);
+    }
+
+    private function actorId(): ?int
+    {
+        $actorId = $this->auth->id();
+        if (is_int($actorId)) {
+            return $actorId;
+        }
+
+        return is_string($actorId) && ctype_digit($actorId) ? (int) $actorId : null;
     }
 
     /** @param array<string, mixed> $data @param array<string, mixed>|null $before @return array<string, mixed> */

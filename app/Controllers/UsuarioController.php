@@ -72,6 +72,57 @@ final class UsuarioController extends Controller
         return $this->json(null, 'Verificación de tarjeta profesional registrada.');
     }
 
+    /** Sesion 7 (RF-014): ficha administrativa completa de un usuario de la firma. */
+    public function show(Request $request, string $id): Response
+    {
+        $usuario = $this->container->get(UsuarioService::class)->find($this->firmaId(), (int) $id);
+
+        return $this->json($usuario);
+    }
+
+    /** Sesion 7 (RF-017): filtro de usuarios con tarjeta profesional pendiente. */
+    public function pendingCards(Request $request): Response
+    {
+        $usuarios = $this->container->get(UsuarioService::class)->pendingProfessionalCards($this->firmaId());
+
+        return $this->json($usuarios);
+    }
+
+    /** Sesion 7 (RF-015): edicion de cargo, permiso propio usuarios.editar_cargo. */
+    public function updateCargo(Request $request, string $id): Response
+    {
+        $cargo = (string) $request->input('cargo', '');
+        $this->container->get(UsuarioService::class)->updateCargo($this->firmaId(), (int) $id, $cargo, $request);
+
+        return $this->json(null, 'Cargo actualizado correctamente.');
+    }
+
+    /** Sesion 7 (RF-018): gestion de cuenta, permiso propio usuarios.editar_cuenta. */
+    public function updateAccount(Request $request, string $id): Response
+    {
+        $this->container->get(UsuarioService::class)->updateAccount($this->firmaId(), (int) $id, (array) $request->input(), $request);
+
+        return $this->json(null, 'Cuenta actualizada correctamente.');
+    }
+
+    /** Sesion 7 (RF-014/RF-018): revoca sesiones sin desactivar al usuario. */
+    public function revokeSessions(Request $request, string $id): Response
+    {
+        $this->container->get(UsuarioService::class)->revokeSessions($this->firmaId(), (int) $id, $request);
+
+        return $this->json(null, 'Sesiones revocadas correctamente.');
+    }
+
+    /** Sesion 8 (RF-030 a RF-034): historial de cambios sensibles/administrativos del usuario. */
+    public function history(Request $request, string $id): Response
+    {
+        $limit = (int) $request->input('por_pagina', 50);
+        $offset = (int) $request->input('offset', 0);
+        $history = $this->container->get(UsuarioService::class)->history($this->firmaId(), (int) $id, $limit, $offset);
+
+        return $this->json($history);
+    }
+
     private function firmaId(): int
     {
         $firmaId = $this->currentFirma();

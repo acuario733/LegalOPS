@@ -52,7 +52,8 @@ final class PerfilService
         private readonly Database $database,
         private readonly AuditoriaService $audit,
         private readonly Auth $auth,
-        private readonly SensitiveDataService $sensitive
+        private readonly SensitiveDataService $sensitive,
+        private readonly UsuarioCambiosSensiblesService $cambiosSensibles
     ) {
     }
 
@@ -498,27 +499,9 @@ final class PerfilService
         string $origin,
         Request $request
     ): void {
-        if ($firmaId === null || trim($oldValue) === trim($newValue)) {
-            return;
-        }
-
-        $masker = $field === 'numero_tarjeta_profesional'
-            ? $this->sensitive->maskProfessionalCard(...)
-            : $this->sensitive->maskDocument(...);
-
-        $this->repository->recordSensitiveChange([
-            'firma_id' => $firmaId,
-            'usuario_afectado_id' => $affectedUserId,
-            'usuario_actor_id' => $actorUserId,
-            'campo' => $field,
-            'valor_anterior_enmascarado' => $masker($oldValue),
-            'valor_nuevo_enmascarado' => $masker($newValue),
-            'valor_anterior_hash' => $this->sensitive->hash($oldValue),
-            'valor_nuevo_hash' => $this->sensitive->hash($newValue),
-            'origen' => $origin,
-            'ip_address' => $request->ip(),
-            'user_agent' => mb_substr($request->userAgent(), 0, 255),
-        ]);
+        // Delegado al servicio centralizado (Sesion 8 de Mi perfil): antes esta
+        // logica estaba duplicada aqui y en UsuarioService.
+        $this->cambiosSensibles->registrar($firmaId, $affectedUserId, $actorUserId, $field, $oldValue, $newValue, $origin, $request);
     }
 
     private function isDuplicateDocumentException(PDOException $exception): bool

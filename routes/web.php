@@ -80,9 +80,16 @@ return static function (Router $router): void {
 
         $router->get('/usuarios', [UsuarioController::class, 'index'], ['permission:usuarios.ver']);
         $router->post('/usuarios', [UsuarioController::class, 'store'], ['permission:usuarios.crear', 'plan:usuarios']);
+        // Rutas literales antes de '/usuarios/{id}' para que el router no las confunda con un id.
+        $router->get('/usuarios/pendientes-tarjeta', [UsuarioController::class, 'pendingCards'], ['permission:usuarios.verificar_profesional']);
+        $router->get('/usuarios/{id}', [UsuarioController::class, 'show'], ['permission:usuarios.ver']);
         $router->patch('/usuarios/{id}', [UsuarioController::class, 'update'], ['permission:usuarios.editar']);
+        $router->patch('/usuarios/{id}/cargo', [UsuarioController::class, 'updateCargo'], ['permission:usuarios.editar_cargo']);
+        $router->patch('/usuarios/{id}/cuenta', [UsuarioController::class, 'updateAccount'], ['permission:usuarios.editar_cuenta']);
         $router->post('/usuarios/{id}/desactivar', [UsuarioController::class, 'deactivate'], ['permission:usuarios.desactivar']);
-        $router->post('/usuarios/{id}/reactivar', [UsuarioController::class, 'reactivate'], ['permission:usuarios.desactivar']);
+        $router->post('/usuarios/{id}/reactivar', [UsuarioController::class, 'reactivate'], ['permission:usuarios.reactivar']);
+        $router->post('/usuarios/{id}/revocar-sesiones', [UsuarioController::class, 'revokeSessions'], ['permission:usuarios.revocar_sesiones']);
+        $router->get('/usuarios/{id}/historial', [UsuarioController::class, 'history'], ['permission:usuarios.ver_historial']);
         $router->post('/usuarios/{id}/tarjeta-profesional/verificar', [UsuarioController::class, 'verifyProfessionalCard'], ['permission:usuarios.verificar_profesional']);
 
         $router->get('/roles', [RolController::class, 'index'], ['permission:roles.ver']);

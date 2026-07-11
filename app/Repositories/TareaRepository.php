@@ -43,7 +43,9 @@ final class TareaRepository extends BaseRepository
              LEFT JOIN casos c ON c.id=ta.caso_id AND c.firma_id=ta.firma_id
              LEFT JOIN terminos t ON t.id=ta.termino_id AND t.firma_id=ta.firma_id
              LEFT JOIN usuarios u ON u.id=ta.responsable_usuario_id AND u.firma_id=ta.firma_id' . $sqlWhere . '
-             ORDER BY FIELD(ta.estado, \'vencida\',\'pendiente\',\'en_proceso\',\'completada\',\'cancelada\'), ta.fecha_vencimiento ASC, ta.id DESC
+             ORDER BY CASE ta.estado WHEN \'vencida\' THEN 0 WHEN \'pendiente\' THEN 1 WHEN \'en_proceso\' THEN 2
+                           WHEN \'completada\' THEN 3 WHEN \'cancelada\' THEN 4 ELSE 5 END,
+                      ta.fecha_vencimiento ASC, ta.id DESC
              LIMIT :limit OFFSET :offset'
         );
         foreach ($params as $key => $value) {
@@ -109,13 +111,18 @@ final class TareaRepository extends BaseRepository
     /** @param array<string, mixed> $data */
     public function create(array $data): int
     {
+        // Nota (Sesion 7, 2026-07-11): timestamp calculado en PHP en vez de
+        // CURRENT_TIMESTAMP(6) para que sea compatible con SQLite en pruebas
+        // unitarias, siguiendo la convencion ya documentada en la sesion GDPR
+        // (docs/IMPLEMENTACION_FASES.md, seccion C2). Mismo valor efectivo en MySQL.
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'INSERT INTO tareas
             (firma_id,caso_id,termino_id,responsable_usuario_id,titulo,titulo_normalizado,descripcion,prioridad,estado,fecha_vencimiento,created_at,updated_at)
              VALUES
-            (:firma_id,:caso_id,:termino_id,:responsable_usuario_id,:titulo,:titulo_normalizado,:descripcion,:prioridad,:estado,:fecha_vencimiento,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))'
+            (:firma_id,:caso_id,:termino_id,:responsable_usuario_id,:titulo,:titulo_normalizado,:descripcion,:prioridad,:estado,:fecha_vencimiento,:created_at,:updated_at)'
         );
-        $statement->execute($data);
+        $statement->execute($data + ['created_at' => $now, 'updated_at' => $now]);
 
         return (int) $this->pdo->lastInsertId();
     }
@@ -123,47 +130,53 @@ final class TareaRepository extends BaseRepository
     /** @param array<string, mixed> $data */
     public function update(int $firmaId, int $id, array $data): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE tareas
              SET caso_id=:caso_id,termino_id=:termino_id,responsable_usuario_id=:responsable_usuario_id,
                  titulo=:titulo,titulo_normalizado=:titulo_normalizado,descripcion=:descripcion,prioridad=:prioridad,
-                 estado=:estado,fecha_vencimiento=:fecha_vencimiento,updated_at=CURRENT_TIMESTAMP(6)
+                 estado=:estado,fecha_vencimiento=:fecha_vencimiento,updated_at=:updated_at
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
-        $statement->execute($data + ['id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute($data + ['updated_at' => $now, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     public function setTermino(int $firmaId, int $id, ?int $termId): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
-            'UPDATE tareas SET termino_id=:termino_id, updated_at=CURRENT_TIMESTAMP(6)
+            'UPDATE tareas SET termino_id=:termino_id, updated_at=:updated_at
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
-        $statement->execute(['termino_id' => $termId, 'id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute(['termino_id' => $termId, 'updated_at' => $now, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     public function clearTerminoIfMatches(int $firmaId, int $id, int $termId): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
-            'UPDATE tareas SET termino_id=NULL, updated_at=CURRENT_TIMESTAMP(6)
+            'UPDATE tareas SET termino_id=NULL, updated_at=:updated_at
              WHERE id=:id AND firma_id=:firma_id AND termino_id=:termino_id AND deleted_at IS NULL'
         );
-        $statement->execute(['id' => $id, 'firma_id' => $firmaId, 'termino_id' => $termId]);
+        $statement->execute(['updated_at' => $now, 'id' => $id, 'firma_id' => $firmaId, 'termino_id' => $termId]);
     }
 
     public function reassign(int $firmaId, int $id, ?int $fromUserId, int $toUserId): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE tareas
-             SET responsable_usuario_id=:responsable_usuario_id,reassigned_at=CURRENT_TIMESTAMP(6),
+             SET responsable_usuario_id=:responsable_usuario_id,reassigned_at=:now1,
                  reassigned_from_usuario_id=:from_usuario_id,reassigned_to_usuario_id=:reassigned_to_usuario_id,
-                 updated_at=CURRENT_TIMESTAMP(6)
+                 updated_at=:now2
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
         $statement->execute([
             'responsable_usuario_id' => $toUserId,
+            'now1' => $now,
             'from_usuario_id' => $fromUserId,
             'reassigned_to_usuario_id' => $toUserId,
+            'now2' => $now,
             'id' => $id,
             'firma_id' => $firmaId,
         ]);
@@ -171,19 +184,22 @@ final class TareaRepository extends BaseRepository
 
     public function changeStatus(int $firmaId, int $id, string $status, int $userId): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE tareas
              SET estado=:estado,
-                 completed_at=CASE WHEN :estado_check=\'completada\' THEN CURRENT_TIMESTAMP(6) ELSE NULL END,
+                 completed_at=CASE WHEN :estado_check=\'completada\' THEN :now1 ELSE NULL END,
                  completed_by_usuario_id=CASE WHEN :estado_user_check=\'completada\' THEN :usuario_id ELSE NULL END,
-                 updated_at=CURRENT_TIMESTAMP(6)
+                 updated_at=:now2
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
         $statement->execute([
             'estado' => $status,
             'estado_check' => $status,
+            'now1' => $now,
             'estado_user_check' => $status,
             'usuario_id' => $userId,
+            'now2' => $now,
             'id' => $id,
             'firma_id' => $firmaId,
         ]);

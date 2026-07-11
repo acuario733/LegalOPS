@@ -796,7 +796,7 @@ Suite de pruebas:
 - `git diff --check`: exit 0 (solo avisos LF/CRLF preexistentes)
 
 Migraciones aplicadas en MySQL (2026-06-30):
-- `0508–0521`: aplicadas via script directo (runner bloqueaba por fallo preexistente en 0508_calendario_permission.sql)
+- `0508–0521`: aplicadas via script directo (runner bloqueaba por fallo preexistente en 0508_calendario_permission.sql, renumerada a 0529_calendario_permission.sql el 2026-07-11 para resolver la colision con 0508_create_document_templates.sql; ver seccion "Camino a V1" para el detalle)
 - `0522–0527`: aplicadas
 
 ## Riesgos y Pendientes

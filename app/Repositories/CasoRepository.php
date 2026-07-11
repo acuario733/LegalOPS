@@ -39,7 +39,8 @@ final class CasoRepository extends BaseRepository
              FROM casos c
              INNER JOIN clientes cl ON cl.id=c.cliente_id AND cl.firma_id=c.firma_id
              LEFT JOIN usuarios u ON u.id=c.responsable_usuario_id AND u.firma_id=c.firma_id' . $sqlWhere . '
-             ORDER BY FIELD(c.estado, \'activo\',\'cerrado\',\'archivado\'), c.updated_at DESC, c.id DESC
+             ORDER BY CASE c.estado WHEN \'activo\' THEN 0 WHEN \'cerrado\' THEN 1 WHEN \'archivado\' THEN 2 ELSE 3 END,
+                      c.updated_at DESC, c.id DESC
              LIMIT :limit OFFSET :offset'
         );
         foreach ($params as $key => $value) {
@@ -118,15 +119,20 @@ final class CasoRepository extends BaseRepository
     /** @param array<string, mixed> $data */
     public function create(array $data): int
     {
+        // Nota (Sesion 7, 2026-07-11): timestamp calculado en PHP en vez de
+        // CURRENT_TIMESTAMP(6) para que sea compatible con SQLite en pruebas
+        // unitarias, siguiendo la convencion ya documentada en la sesion GDPR
+        // (docs/IMPLEMENTACION_FASES.md, seccion C2). Mismo valor efectivo en MySQL.
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'INSERT INTO casos
             (firma_id,numero,cliente_id,responsable_usuario_id,titulo,titulo_normalizado,descripcion,estado,prioridad,
              tipo_proceso,jurisdiccion,despacho,radicado,fecha_apertura,created_at,updated_at)
              VALUES
             (:firma_id,:numero,:cliente_id,:responsable_usuario_id,:titulo,:titulo_normalizado,:descripcion,:estado,:prioridad,
-             :tipo_proceso,:jurisdiccion,:despacho,:radicado,:fecha_apertura,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))'
+             :tipo_proceso,:jurisdiccion,:despacho,:radicado,:fecha_apertura,:created_at,:updated_at)'
         );
-        $statement->execute($data);
+        $statement->execute($data + ['created_at' => $now, 'updated_at' => $now]);
 
         return (int) $this->pdo->lastInsertId();
     }
@@ -134,47 +140,51 @@ final class CasoRepository extends BaseRepository
     /** @param array<string, mixed> $data */
     public function update(int $firmaId, int $id, array $data): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE casos
              SET cliente_id=:cliente_id,responsable_usuario_id=:responsable_usuario_id,titulo=:titulo,
                  titulo_normalizado=:titulo_normalizado,descripcion=:descripcion,estado=:estado,prioridad=:prioridad,
                  tipo_proceso=:tipo_proceso,jurisdiccion=:jurisdiccion,despacho=:despacho,radicado=:radicado,
-                 fecha_apertura=:fecha_apertura,updated_at=CURRENT_TIMESTAMP(6)
+                 fecha_apertura=:fecha_apertura,updated_at=:updated_at
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
-        $statement->execute($data + ['id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute($data + ['updated_at' => $now, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     public function close(int $firmaId, int $id, int $userId, string $reason): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE casos
-             SET estado=\'cerrado\', closed_at=CURRENT_TIMESTAMP(6), closed_by_usuario_id=:usuario_id,
-                 close_reason=:motivo, updated_at=CURRENT_TIMESTAMP(6)
+             SET estado=\'cerrado\', closed_at=:now1, closed_by_usuario_id=:usuario_id,
+                 close_reason=:motivo, updated_at=:now2
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
-        $statement->execute(['usuario_id' => $userId, 'motivo' => $reason, 'id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute(['now1' => $now, 'usuario_id' => $userId, 'motivo' => $reason, 'now2' => $now, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     public function archive(int $firmaId, int $id, int $userId, string $reason): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE casos
-             SET estado=\'archivado\', archived_at=CURRENT_TIMESTAMP(6), archived_by_usuario_id=:usuario_id,
-                 archive_reason=:motivo, updated_at=CURRENT_TIMESTAMP(6)
+             SET estado=\'archivado\', archived_at=:now1, archived_by_usuario_id=:usuario_id,
+                 archive_reason=:motivo, updated_at=:now2
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
-        $statement->execute(['usuario_id' => $userId, 'motivo' => $reason, 'id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute(['now1' => $now, 'usuario_id' => $userId, 'motivo' => $reason, 'now2' => $now, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     public function reopen(int $firmaId, int $id): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE casos
-             SET estado=\'activo\', updated_at=CURRENT_TIMESTAMP(6)
+             SET estado=\'activo\', updated_at=:updated_at
              WHERE id=:id AND firma_id=:firma_id AND estado IN (\'cerrado\',\'archivado\') AND deleted_at IS NULL'
         );
-        $statement->execute(['id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute(['updated_at' => $now, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     public function nextCaseNumber(int $firmaId, int $year): string
@@ -194,12 +204,13 @@ final class CasoRepository extends BaseRepository
     public function setCurrentStage(int $firmaId, int $id, int $stageId): void
     {
         // TENANT FILTER: firma_id = ?
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE casos
-             SET etapa_actual_id=:etapa_actual_id, updated_at=CURRENT_TIMESTAMP(6)
+             SET etapa_actual_id=:etapa_actual_id, updated_at=:updated_at
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
-        $statement->execute(['etapa_actual_id' => $stageId, 'id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute(['etapa_actual_id' => $stageId, 'updated_at' => $now, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     private function normalizeText(string $value, int $max): string

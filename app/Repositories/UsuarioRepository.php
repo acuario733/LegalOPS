@@ -126,20 +126,37 @@ final class UsuarioRepository extends BaseRepository
     /** @param array<string, mixed> $data */
     public function update(int $firmaId, int $id, array $data): void
     {
+        // Nota (Sesion 7, 2026-07-11): timestamp calculado en PHP en vez de
+        // CURRENT_TIMESTAMP(6) para que sea compatible con SQLite en pruebas
+        // unitarias, siguiendo la convencion ya documentada en la sesion GDPR
+        // (docs/IMPLEMENTACION_FASES.md, seccion C2). Mismo valor efectivo en MySQL.
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
-            'UPDATE usuarios SET nombre=:nombre,email=:email,email_normalizado=:email_normalizado,email_scope=:email_scope,tipo=:tipo,updated_at=CURRENT_TIMESTAMP(6)
+            'UPDATE usuarios SET nombre=:nombre,email=:email,email_normalizado=:email_normalizado,email_scope=:email_scope,tipo=:tipo,updated_at=:updated_at
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
-        $statement->execute($data + ['id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute($data + ['updated_at' => $now, 'id' => $id, 'firma_id' => $firmaId]);
     }
 
     public function setStatus(int $firmaId, int $id, string $status): void
     {
+        // Nota (Sesion 7, 2026-07-11): timestamp calculado en PHP en vez de
+        // CURRENT_TIMESTAMP(6) para que sea compatible con SQLite en pruebas
+        // unitarias, siguiendo la convencion ya documentada en la sesion GDPR
+        // (docs/IMPLEMENTACION_FASES.md, seccion C2). Mismo valor efectivo en MySQL.
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
-            'UPDATE usuarios SET estado=:estado,deactivated_at=CASE WHEN :status_check=\'inactivo\' THEN CURRENT_TIMESTAMP(6) ELSE NULL END,updated_at=CURRENT_TIMESTAMP(6)
+            'UPDATE usuarios SET estado=:estado,deactivated_at=CASE WHEN :status_check=\'inactivo\' THEN :now1 ELSE NULL END,updated_at=:now2
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
-        $statement->execute(['estado' => $status, 'status_check' => $status, 'id' => $id, 'firma_id' => $firmaId]);
+        $statement->execute([
+            'estado' => $status,
+            'status_check' => $status,
+            'now1' => $now,
+            'now2' => $now,
+            'id' => $id,
+            'firma_id' => $firmaId,
+        ]);
     }
 
     public function updateLastLogin(int $id): void
@@ -158,21 +175,28 @@ final class UsuarioRepository extends BaseRepository
 
     public function verifyProfessionalCard(int $firmaId, int $id, int $verifierId, string $status, ?string $observation): void
     {
+        // Nota (Sesion 7, 2026-07-11): timestamp calculado en PHP en vez de
+        // CURRENT_TIMESTAMP(6) para que sea compatible con SQLite en pruebas
+        // unitarias, siguiendo la convencion ya documentada en la sesion GDPR
+        // (docs/IMPLEMENTACION_FASES.md, seccion C2). Mismo valor efectivo en MySQL.
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $statement = $this->pdo->prepare(
             'UPDATE usuarios
              SET tarjeta_profesional_verificacion_estado = :estado,
-                 fecha_verificacion_tarjeta = CURRENT_TIMESTAMP(6),
+                 fecha_verificacion_tarjeta = :now1,
                  usuario_verificador_tarjeta_id = :verificador_id,
                  observacion_verificacion_tarjeta = :observacion,
-                 updated_at = CURRENT_TIMESTAMP(6)
+                 updated_at = :now2
              WHERE id = :id
                AND firma_id = :firma_id
                AND deleted_at IS NULL'
         );
         $statement->execute([
             'estado' => $status,
+            'now1' => $now,
             'verificador_id' => $verifierId,
             'observacion' => $observation,
+            'now2' => $now,
             'id' => $id,
             'firma_id' => $firmaId,
         ]);
@@ -227,5 +251,55 @@ final class UsuarioRepository extends BaseRepository
         $statement->execute(['firma_id' => $firmaId]);
 
         return (int) $statement->fetchColumn();
+    }
+
+    /** Sesion 7 (RF-017): usuarios con tarjeta profesional pendiente de verificar en la firma activa. @return list<array<string, mixed>> */
+    public function pendingProfessionalCards(int $firmaId): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT id, nombre, email, tipo, estado, numero_tarjeta_profesional_normalizado
+             FROM usuarios
+             WHERE firma_id = :firma_id
+               AND deleted_at IS NULL
+               AND tiene_tarjeta_profesional = 1
+               AND tarjeta_profesional_verificacion_estado = \'pendiente\'
+             ORDER BY nombre'
+        );
+        $statement->execute(['firma_id' => $firmaId]);
+
+        return $statement->fetchAll();
+    }
+
+    /** Sesion 7 (RF-015): actualiza unicamente el cargo, separado de perfil y cuenta. */
+    public function updateCargo(int $firmaId, int $id, ?string $cargo): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE usuarios SET cargo=:cargo, updated_at=:updated_at
+             WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
+        );
+        $statement->execute([
+            'cargo' => $cargo,
+            'updated_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s.u'),
+            'id' => $id,
+            'firma_id' => $firmaId,
+        ]);
+    }
+
+    /** Sesion 7 (RF-018): actualiza unicamente los campos de cuenta (email/tipo), separado de perfil. */
+    public function updateAccountFields(int $firmaId, int $id, string $email, string $emailNormalizado, string $emailScope, string $tipo): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE usuarios SET email=:email, email_normalizado=:email_normalizado, email_scope=:email_scope, tipo=:tipo, updated_at=:updated_at
+             WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
+        );
+        $statement->execute([
+            'email' => $email,
+            'email_normalizado' => $emailNormalizado,
+            'email_scope' => $emailScope,
+            'tipo' => $tipo,
+            'updated_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s.u'),
+            'id' => $id,
+            'firma_id' => $firmaId,
+        ]);
     }
 }
