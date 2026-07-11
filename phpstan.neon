@@ -1,0 +1,16 @@
+parameters:
+    level: 6
+    paths:
+        - app
+    excludePaths:
+        # Views y PdfTemplates inyectan variables por scope: los warnings de
+        # variable.undefined son falsos positivos estructurales, no errores reales.
+        - app/Views
+        - app/PdfTemplates
+    ignoreErrors:
+        # missingType.iterableValue: el codebase usa "array" genérico en ~200 firmas
+        # heredadas de antes del análisis estático. No son bugs; añadir genéricos
+        # a cada @param/@return es un refactor de documentación fuera del alcance de C4.
+        - identifier: missingType.iterableValue
+    tmpDir: storage/cache/phpstan
+    reportUnmatchedIgnoredErrors: false

@@ -10,6 +10,19 @@
         <testsuite name="Integration">
             <directory>tests/Integration</directory>
         </testsuite>
+        <testsuite name="Phase3C">
+            <file>tests/Unit/Services/DocumentoVersionMagicBytesTest.php</file>
+        </testsuite>
+        <testsuite name="Phase2C">
+            <file>tests/Unit/Services/GdprServiceTest.php</file>
+        </testsuite>
+        <testsuite name="Phase1C">
+            <file>tests/Unit/Middleware/CorsMiddlewareTest.php</file>
+            <file>tests/Unit/Middleware/SecurityHeadersMiddlewareTest.php</file>
+        </testsuite>
+        <testsuite name="PerfilPassword">
+            <file>tests/Unit/Services/ChangePasswordServiceTest.php</file>
+        </testsuite>
         <testsuite name="Phase6">
             <file>tests/Unit/Services/TrustServiceMfaTest.php</file>
         </testsuite>

@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<ruleset name="LegalOPS">
+    <description>Reglas de estilo para LegalOPS Cloud.</description>
+
+    <!-- Cobertura completa de app/, excluyendo plantillas de presentación.
+         Los tests usan snake_case en nombres de método (convención PHPUnit),
+         lo que viola PSR-12 CamelCaps; se analizan por separado si es necesario. -->
+    <file>app</file>
+
+    <!-- Views y PdfTemplates usan PHP embebido en HTML: sangría y braces siguen
+         las convenciones de la plantilla, no las de PSR-12. -->
+    <exclude-pattern>app/Views/*</exclude-pattern>
+    <exclude-pattern>app/PdfTemplates/*</exclude-pattern>
+
+    <arg name="extensions" value="php"/>
+    <arg name="colors"/>
+    <arg name="warning-severity" value="0"/>
+    <rule ref="PSR12"/>
+</ruleset>
