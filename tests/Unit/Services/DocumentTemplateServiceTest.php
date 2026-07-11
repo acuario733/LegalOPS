@@ -21,6 +21,7 @@ use App\Services\AuditoriaService;
 use App\Services\DocumentTemplateService;
 use App\Services\DocumentoService;
 use App\Services\DocumentoVersionService;
+use App\Services\DocxService;
 use App\Services\LimitePlanService;
 use App\Services\TemplateVariableService;
 use App\Validators\DocumentoValidator;
@@ -77,7 +78,7 @@ final class DocumentTemplateServiceTest extends TestCase
             new FirmaRepository($this->pdo),
             new UsuarioRepository($this->pdo)
         );
-        $this->service = new DocumentTemplateService(new DocumentTemplateRepository($this->pdo), $variables, $documentos);
+        $this->service = new DocumentTemplateService(new DocumentTemplateRepository($this->pdo), $variables, $documentos, new DocxService());
     }
 
     public function test_create_detects_variables_used(): void

@@ -44,9 +44,9 @@ final class TemplateVariableServiceTest extends TestCase
         self::assertSame(date('d/m/Y'), $this->service->resolve('{{fecha.hoy}}', ['fecha' => ['hoy' => date('d/m/Y')]]));
     }
 
-    public function test_leaves_unknown_variable_unchanged(): void
+    public function test_replaces_unknown_variable_with_marker(): void
     {
-        self::assertSame('{{caso.no_existe}}', $this->service->resolve('{{caso.no_existe}}', ['caso' => ['titulo' => 'X']]));
+        self::assertSame('[CAMPO_NO_ENCONTRADO]', $this->service->resolve('{{caso.no_existe}}', ['caso' => ['titulo' => 'X']]));
     }
 
     public function test_escapes_html_in_variable_value(): void
@@ -64,8 +64,8 @@ final class TemplateVariableServiceTest extends TestCase
         self::assertSame('Valor libre', $this->service->resolve('{{custom.campo_1}}', ['custom' => ['campo_1' => 'Valor libre']]));
     }
 
-    public function test_resolve_with_empty_context_leaves_all_unchanged(): void
+    public function test_resolve_with_empty_context_uses_missing_markers(): void
     {
-        self::assertSame('{{caso.titulo}} {{cliente.nombre}}', $this->service->resolve('{{caso.titulo}} {{cliente.nombre}}', []));
+        self::assertSame('[CAMPO_NO_ENCONTRADO] [CAMPO_NO_ENCONTRADO]', $this->service->resolve('{{caso.titulo}} {{cliente.nombre}}', []));
     }
 }
