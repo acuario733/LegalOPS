@@ -1,0 +1,401 @@
+/* ════════════════════════════════════════════════════════════════════
+   LegalOPS Cloud V2 — Design System
+   Override layer sobre AdminLTE. Cargado después de adminlte.min.css.
+   Todos los valores cromáticos viven EXCLUSIVAMENTE como custom properties.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── A) TOKENS ────────────────────────────────────────────────────── */
+:root {
+  /* Primarios */
+  --color-navy:          #0D1B3E;
+  --color-navy-light:    #1A2B52;
+  --color-navy-muted:    #2D3E6B;
+
+  /* Acento */
+  --color-green:         #1A6B45;
+  --color-green-hover:   #155938;
+  --color-green-light:   #E8F5EE;
+  --color-green-text:    #1A6B45;
+
+  /* Neutrales */
+  --color-bg:            #F4F6FA;
+  --color-surface:       #FFFFFF;
+  --color-border:        #E2E8F0;
+  --color-border-dark:   #CBD5E1;
+
+  /* Texto */
+  --color-text-primary:  #0D1B3E;
+  --color-text-secondary:#4A5568;
+  --color-text-muted:    #94A3B8;
+
+  /* Estados */
+  --color-warning:       #D97706;
+  --color-warning-light: #FEF3C7;
+  --color-danger:        #DC2626;
+  --color-danger-light:  #FEE2E2;
+  --color-info:          #2563EB;
+  --color-info-light:    #DBEAFE;
+
+  /* Sombras */
+  --shadow-card:  0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-modal: 0 20px 60px rgba(0,0,0,0.15);
+  --shadow-hover: 0 4px 12px rgba(0,0,0,0.10);
+
+  /* Tipografía */
+  --font-base:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.5rem;
+  --font-size-2xl:2rem;
+
+  /* Sidebar — fuente única de verdad para todos los archivos CSS */
+  --sidebar-width:           220px;
+  --sidebar-width-collapsed:  64px;
+  --sidebar-width-mobile:    260px;
+
+  /* Radios */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
+  --radius-full: 9999px;
+
+  /* Espaciado (8px grid) */
+  --space-1:  4px;   --space-2:  8px;   --space-3:  12px;
+  --space-4:  16px;  --space-5:  20px;  --space-6:  24px;
+  --space-8:  32px;  --space-10: 40px;  --space-12: 48px;
+}
+
+/* ── B) RESET Y BASE ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-base) !important;
+  font-size:   var(--font-size-md);
+  color:       var(--color-text-primary);
+  background:  var(--color-bg) !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── C) BOTONES ───────────────────────────────────────────────────── */
+.btn {
+  font-family:   var(--font-base);
+  font-weight:   500;
+  border-radius: var(--radius-sm);
+  min-height:    40px;
+  display:       inline-flex;
+  align-items:   center;
+  gap:           6px;
+  transition:    background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+  font-size:     var(--font-size-sm);
+  line-height:   1;
+}
+
+.btn-primary,
+.btn-success {
+  background:    var(--color-green) !important;
+  border-color:  var(--color-green) !important;
+  color:         #fff !important;
+}
+.btn-primary:hover,
+.btn-success:hover,
+.btn-primary:focus,
+.btn-success:focus {
+  background:   var(--color-green-hover) !important;
+  border-color: var(--color-green-hover) !important;
+  color:        #fff !important;
+  box-shadow:   0 0 0 3px rgba(26,107,69,0.2) !important;
+}
+
+.btn-outline-primary,
+.btn-outline-success {
+  border:     1.5px solid var(--color-green) !important;
+  color:      var(--color-green) !important;
+  background: transparent !important;
+}
+.btn-outline-primary:hover,
+.btn-outline-success:hover {
+  background: var(--color-green-light) !important;
+  color:      var(--color-green) !important;
+}
+
+.btn-ghost {
+  border:     none;
+  background: transparent;
+  color:      var(--color-text-secondary);
+}
+.btn-ghost:hover {
+  background: var(--color-bg);
+  color:      var(--color-text-primary);
+}
+
+/* ── D) CARDS ─────────────────────────────────────────────────────── */
+.card {
+  background:    var(--color-surface) !important;
+  border:        1px solid var(--color-border) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow:    var(--shadow-card) !important;
+}
+.card-header {
+  background:    transparent !important;
+  border-bottom: 1px solid var(--color-border) !important;
+  font-weight:   600;
+  color:         var(--color-text-primary);
+  padding:       var(--space-4) var(--space-6);
+}
+.card-body {
+  padding: var(--space-6);
+}
+
+/* ── E) BADGES DE ESTADO ──────────────────────────────────────────── */
+.badge-status {
+  border-radius:  var(--radius-full);
+  font-size:      var(--font-size-xs);
+  font-weight:    600;
+  padding:        3px 10px;
+  display:        inline-flex;
+  align-items:    center;
+  gap:            4px;
+  white-space:    nowrap;
+}
+.badge-confirmada  { background: var(--color-green-light);   color: var(--color-green-text); }
+.badge-pendiente   { background: var(--color-warning-light); color: var(--color-warning); }
+.badge-cancelada   { background: var(--color-danger-light);  color: var(--color-danger); }
+.badge-reprogramada{ background: var(--color-info-light);    color: var(--color-info); }
+.badge-fijo        { background: #EFF6FF;                    color: #1D4ED8; }
+.badge-activa      { background: var(--color-green-light);   color: var(--color-green-text); }
+.badge-suspendida  { background: var(--color-danger-light);  color: var(--color-danger); }
+.badge-trial       { background: var(--color-warning-light); color: var(--color-warning); }
+.badge-basico      { background: #F1F5F9; color: #475569; }
+.badge-profesional { background: var(--color-info-light);    color: var(--color-info); }
+.badge-enterprise  { background: #FEF3C7; color: #92400E; }
+
+/* Bootstrap badge overrides */
+.badge.bg-success  { background: var(--color-green)   !important; }
+.badge.bg-danger   { background: var(--color-danger)  !important; }
+.badge.bg-warning  { background: var(--color-warning) !important; color: #fff !important; }
+.badge.bg-info     { background: var(--color-info)    !important; }
+
+/* ── F) FORMULARIOS ───────────────────────────────────────────────── */
+.form-control,
+.form-select {
+  border:        1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size:     var(--font-size-sm);
+  color:         var(--color-text-primary);
+  font-family:   var(--font-base);
+  transition:    border-color 0.15s, box-shadow 0.15s;
+  background:    var(--color-surface);
+}
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--color-green);
+  box-shadow:   0 0 0 3px rgba(26,107,69,0.12);
+  outline:      none;
+}
+.form-control::placeholder { color: var(--color-text-muted); }
+.form-label {
+  font-size:   var(--font-size-sm);
+  font-weight: 500;
+  color:       var(--color-text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+/* ── G) TABLAS ────────────────────────────────────────────────────── */
+.data-table {
+  width:           100%;
+  border-collapse: collapse;
+}
+.data-table thead th {
+  font-size:       var(--font-size-xs);
+  font-weight:     600;
+  color:           var(--color-text-secondary);
+  text-transform:  uppercase;
+  letter-spacing:  0.04em;
+  padding:         var(--space-3) var(--space-4);
+  border-bottom:   2px solid var(--color-border);
+  white-space:     nowrap;
+}
+.data-table tbody td {
+  padding:         12px var(--space-4);
+  font-size:       var(--font-size-sm);
+  border-bottom:   1px solid var(--color-border);
+  color:           var(--color-text-primary);
+  vertical-align:  middle;
+}
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr:hover td      { background: var(--color-bg); }
+
+/* Bootstrap table overrides */
+.table thead th {
+  font-size:      var(--font-size-xs) !important;
+  font-weight:    600 !important;
+  color:          var(--color-text-secondary) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  border-bottom:  2px solid var(--color-border) !important;
+}
+.table tbody td {
+  font-size:     var(--font-size-sm);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+.table-hover tbody tr:hover td { background: var(--color-bg); }
+
+/* ── H) PAGE HEADER ───────────────────────────────────────────────── */
+.page-header {
+  display:         flex;
+  justify-content: space-between;
+  align-items:     flex-start;
+  margin-bottom:   var(--space-8);
+  gap:             var(--space-4);
+  flex-wrap:       wrap;
+}
+.page-title {
+  font-size:   var(--font-size-xl);
+  font-weight: 700;
+  color:       var(--color-navy);
+  margin:      0;
+  line-height: 1.2;
+}
+.page-subtitle {
+  font-size:   var(--font-size-sm);
+  color:       var(--color-text-secondary);
+  margin-top:  var(--space-1);
+  margin-bottom: 0;
+}
+
+/* AdminLTE h1 en content-header → usar page-title styles */
+.app-content-header h1 {
+  font-size:   var(--font-size-xl) !important;
+  font-weight: 700 !important;
+  color:       var(--color-navy) !important;
+}
+
+/* ── I) STAT CARDS ────────────────────────────────────────────────── */
+.stat-card {
+  background:    var(--color-surface);
+  border:        1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow:    var(--shadow-card);
+  padding:       var(--space-6);
+  transition:    box-shadow 0.15s;
+}
+.stat-card:hover { box-shadow: var(--shadow-hover); }
+
+.stat-value {
+  font-size:   var(--font-size-2xl);
+  font-weight: 700;
+  color:       var(--color-navy);
+  line-height: 1;
+}
+.stat-label {
+  font-size:    var(--font-size-sm);
+  color:        var(--color-text-secondary);
+  margin-top:   var(--space-1);
+  margin-bottom:0;
+}
+.stat-trend {
+  font-size:    var(--font-size-xs);
+  font-weight:  600;
+  margin-top:   var(--space-2);
+  display:      inline-flex;
+  align-items:  center;
+  gap:          3px;
+}
+.stat-trend.up   { color: var(--color-green); }
+.stat-trend.down { color: var(--color-danger); }
+
+/* ── ALERTS ───────────────────────────────────────────────────────── */
+.alert-success { background: var(--color-green-light); border-color: var(--color-green); color: var(--color-green-text); }
+.alert-danger  { background: var(--color-danger-light); border-color: var(--color-danger); color: var(--color-danger); }
+.alert-warning { background: var(--color-warning-light); border-color: var(--color-warning); color: var(--color-warning); }
+
+/* ── DROPDOWNS ────────────────────────────────────────────────────── */
+.dropdown-menu {
+  border:        1px solid var(--color-border) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow:    var(--shadow-hover) !important;
+  padding:       var(--space-2) !important;
+}
+.dropdown-item {
+  border-radius: var(--radius-sm);
+  font-size:     var(--font-size-sm);
+  color:         var(--color-text-primary);
+  padding:       var(--space-2) var(--space-3);
+}
+.dropdown-item:hover  { background: var(--color-bg); }
+.dropdown-item.danger { color: var(--color-danger); }
+.dropdown-item.danger:hover { background: var(--color-danger-light); }
+
+/* ── MODALES ──────────────────────────────────────────────────────── */
+.modal-content {
+  border:        none !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow:    var(--shadow-modal) !important;
+}
+.modal-header {
+  border-bottom: 1px solid var(--color-border) !important;
+  padding:       var(--space-5) var(--space-6) !important;
+}
+.modal-footer {
+  border-top:    1px solid var(--color-border) !important;
+  padding:       var(--space-4) var(--space-6) !important;
+}
+.modal-title {
+  font-size:   var(--font-size-lg) !important;
+  font-weight: 600 !important;
+  color:       var(--color-navy) !important;
+}
+
+/* ── PAGINACIÓN ───────────────────────────────────────────────────── */
+.pagination .page-link {
+  border:        1px solid var(--color-border);
+  color:         var(--color-text-secondary);
+  border-radius: var(--radius-sm) !important;
+  font-size:     var(--font-size-sm);
+}
+.pagination .page-item.active .page-link {
+  background:  var(--color-green) !important;
+  border-color:var(--color-green) !important;
+}
+
+/* ── TOGGLE SWITCH ────────────────────────────────────────────────── */
+.form-check-input:checked {
+  background-color: var(--color-green) !important;
+  border-color:     var(--color-green) !important;
+}
+
+/* ── PROGRESS BARS ────────────────────────────────────────────────── */
+.progress-bar { background: var(--color-green) !important; }
+.progress     { background: var(--color-border); border-radius: var(--radius-full); }
+
+/* ── LINKS ────────────────────────────────────────────────────────── */
+a { color: var(--color-green); }
+a:hover { color: var(--color-green-hover); }
+
+/* ── CONTENT AREA ─────────────────────────────────────────────────── */
+.app-content,
+.content-area {
+  background: var(--color-bg);
+  min-height:  calc(100vh - 60px);
+}
+
+/* ── IMPERSONATION BANNER ─────────────────────────────────────────── */
+#impersonation-banner {
+  background:  var(--color-danger);
+  color:       #fff;
+  text-align:  center;
+  padding:     var(--space-2) var(--space-4);
+  font-size:   var(--font-size-sm);
+  font-weight: 500;
+  display:     flex;
+  align-items: center;
+  justify-content: center;
+  gap:         var(--space-4);
+  position:    sticky;
+  top:         0;
+  z-index:     200;
+}

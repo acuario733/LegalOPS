@@ -2,8 +2,17 @@
 
 declare(strict_types=1);
 
-$pageTitle = isset($title) ? (string) $title : 'LegalOPS Cloud';
-$csrf = isset($csrfToken) ? (string) $csrfToken : '';
+$pageTitle   = isset($title)     ? (string) $title     : 'LegalOPS Cloud';
+$csrf        = isset($csrfToken) ? (string) $csrfToken : '';
+$currentUser = $currentUser ?? null;
+
+// Avatar: primeras 2 letras del nombre
+$avatarText = '??';
+if (is_array($currentUser) && !empty($currentUser['name'])) {
+    $avatarText = strtoupper(mb_substr((string) $currentUser['name'], 0, 2));
+}
+$userName = is_array($currentUser) ? (string) ($currentUser['name'] ?? 'Usuario') : 'Usuario';
+$userRole = is_array($currentUser) ? (string) ($currentUser['role'] ?? $currentUser['cargo'] ?? '') : '';
 ?>
 <!doctype html>
 <html lang="es">
@@ -24,35 +33,126 @@ $csrf = isset($csrfToken) ? (string) $csrfToken : '';
     <link rel="apple-touch-icon" sizes="192x192" href="/assets/icons/icon-192.png">
     <meta name="msapplication-TileImage" content="/assets/icons/icon-144.png">
     <meta name="msapplication-TileColor" content="#1a1a2e">
+    <!-- Captura temprana del beforeinstallprompt antes de que los scripts se carguen -->
+    <script>
+    window.__pwaPrompt = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__pwaPrompt = e;
+        document.dispatchEvent(new Event('pwa-prompt-ready'));
+    });
+    </script>
+    <!-- Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Design System (orden: base → componentes → overrides) -->
     <link rel="stylesheet" href="<?= e(asset('bootstrap/css/bootstrap.min.css')) ?>">
     <link rel="stylesheet" href="<?= e(asset('icons/font/bootstrap-icons.min.css')) ?>">
     <link rel="stylesheet" href="<?= e(asset('adminlte/css/adminlte.min.css')) ?>">
+    <link rel="stylesheet" href="/assets/css/design-system.css">
+    <link rel="stylesheet" href="/assets/css/sidebar.css">
+    <link rel="stylesheet" href="/assets/css/topbar.css">
     <link rel="stylesheet" href="<?= e(asset('css/app.css')) ?>">
     <link rel="stylesheet" href="<?= e(asset('css/responsive.css')) ?>">
     <link rel="stylesheet" href="/assets/css/mobile.css">
 </head>
-<body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
-<div data-notification-container style="position:fixed;top:20px;right:20px;z-index:9999;min-width:280px;"></div>
-<div class="app-wrapper">
-    <?= $this->partial('navbar', ['currentUser' => $currentUser ?? null]) ?>
-    <?= $this->partial('sidebar', ['section' => 'app', 'currentUser' => $currentUser ?? null]) ?>
+<body class="layout-fixed sidebar-expand-lg">
+<div data-notification-container style="position:fixed;top:20px;right:20px;z-index:9999;min-width:280px;pointer-events:none;"></div>
 
-    <main class="app-main">
-        <div class="app-content-header">
-            <div class="container-fluid">
-                <div class="row align-items-center">
-                    <div class="col-sm-8"><h1 class="mb-0"><?= e($pageTitle) ?></h1></div>
-                    <div class="col-sm-4 text-sm-end text-secondary small">Núcleo técnico</div>
+<div class="app-wrapper">
+    <!-- SIDEBAR -->
+    <aside class="app-sidebar" id="appSidebar" data-bs-theme="dark">
+        <div class="sidebar-brand">
+            <a href="/dashboard" class="brand-link text-decoration-none d-flex align-items-center gap-2">
+                <span class="legalops-brand-mark">L</span>
+                <span class="brand-text">
+                    LegalOPS Cloud
+                    <span class="brand-badge-v2 d-block">V2</span>
+                </span>
+            </a>
+        </div>
+        <div class="sidebar-wrapper">
+            <nav role="navigation" aria-label="Navegación principal">
+                <?= $this->partial('sidebar', ['section' => 'app', 'currentUser' => $currentUser]) ?>
+            </nav>
+        </div>
+        <div class="sidebar-footer">
+            <div class="sidebar-user-block">
+                <div class="sidebar-avatar"><?= e($avatarText) ?></div>
+                <div class="overflow-hidden">
+                    <div class="sidebar-user-name"><?= e($userName) ?></div>
+                    <div class="sidebar-user-role"><?= e($userRole) ?></div>
                 </div>
             </div>
+            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Colapsar menú" type="button">
+                <i class="bi bi-chevron-double-left" id="sidebarCollapseIcon"></i>
+                <span>Colapsar</span>
+            </button>
         </div>
-        <div class="app-content">
-            <div class="container-fluid"><?= $content ?></div>
-        </div>
-    </main>
+    </aside>
 
-    <?= $this->partial('footer') ?>
+    <!-- CONTENIDO PRINCIPAL — app-main-wrapper requerido por AdminLTE 4 CSS Grid -->
+    <div class="app-main-wrapper" id="appMain">
+        <!-- TOPBAR -->
+        <header class="app-header" role="banner">
+            <button class="mobile-menu-btn" id="mobileSidebarBtn"
+                    aria-label="Abrir menú"
+                    aria-expanded="false"
+                    aria-controls="appSidebar"
+                    type="button">
+                <i class="bi bi-list"></i>
+            </button>
+            <span class="topbar-title"><?= e($pageTitle) ?></span>
+            <div class="topbar-actions">
+                <button class="topbar-icon-btn" aria-label="Notificaciones" type="button" id="topbarNotifBtn">
+                    <i class="bi bi-bell"></i>
+                    <span class="topbar-notif-badge" id="topbarNotifBadge" style="display:none;"></span>
+                </button>
+                <div class="dropdown">
+                    <button class="topbar-avatar dropdown-toggle border-0" data-bs-toggle="dropdown"
+                            aria-expanded="false" type="button" style="text-decoration:none;">
+                        <?= e($avatarText) ?>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><span class="dropdown-item-text fw-semibold"><?= e($userName) ?></span></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="/mi-perfil"><i class="bi bi-person me-2"></i>Mi perfil</a></li>
+                        <li>
+                            <button type="button" class="dropdown-item" data-action="/logout" data-redirect="/login">
+                                <i class="bi bi-box-arrow-right me-2"></i>Salir
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </header>
+
+        <!-- CONTENIDO — cada vista renderiza su propio page-header si lo necesita -->
+        <main class="app-main">
+            <div class="app-content p-4">
+                <?= $content ?>
+            </div>
+        </main>
+    </div>
 </div>
+
+<!-- PWA Install Prompt -->
+<div id="pwa-install-banner"
+     style="display:none;z-index:9999;"
+     class="position-fixed bottom-0 start-0 end-0 p-3 bg-primary text-white
+            d-flex align-items:center justify-content-between shadow-lg">
+    <div>
+        <strong>Instalar LegalOPS</strong>
+        <small class="d-block">Accede más rápido desde tu pantalla de inicio</small>
+    </div>
+    <div class="d-flex gap-2">
+        <button id="pwa-install-btn" class="btn btn-light btn-sm">Instalar</button>
+        <button id="pwa-dismiss-btn" class="btn btn-outline-light btn-sm">Ahora no</button>
+    </div>
+</div>
+
+<!-- Scripts -->
 <script src="<?= e(asset('bootstrap/js/bootstrap.bundle.min.js')) ?>"></script>
 <script src="<?= e(asset('adminlte/js/adminlte.min.js')) ?>"></script>
 <script src="<?= e(asset('js/app.js')) ?>"></script>
@@ -83,27 +183,12 @@ $csrf = isset($csrfToken) ? (string) $csrfToken : '';
 <script src="<?= e(asset('js/modules/onboarding.js')) ?>"></script>
 <script src="<?= e(asset('js/web-vitals.js')) ?>"></script>
 <?php
-// Inyectar BUILD_HASH para que web-vitals.js lo use al registrar el SW.
-// El hash lo escribe webpack (BuildHashPlugin) en storage/build_hash.txt.
 use App\Helpers\BuildHelper;
 $swVersion = BuildHelper::buildHash();
 ?>
 <script>window.SW_VERSION = '<?= e($swVersion) ?>';</script>
-<script src="/assets/js/mobile-sidebar.js"></script>
-<!-- PWA Install Prompt -->
-<div id="pwa-install-banner"
-     style="display:none;z-index:9999;"
-     class="position-fixed bottom-0 start-0 end-0 p-3 bg-primary text-white
-            d-flex align-items-center justify-content-between shadow-lg">
-    <div>
-        <strong>Instalar LegalOPS</strong>
-        <small class="d-block">Accede más rápido desde tu pantalla de inicio</small>
-    </div>
-    <div class="d-flex gap-2">
-        <button id="pwa-install-btn" class="btn btn-light btn-sm">Instalar</button>
-        <button id="pwa-dismiss-btn" class="btn btn-outline-light btn-sm">Ahora no</button>
-    </div>
-</div>
+<script src="/assets/js/sidebar.js"></script>
+<script src="/assets/js/ui-components.js"></script>
 <script src="/assets/js/pwa-install.js"></script>
 </body>
 </html>

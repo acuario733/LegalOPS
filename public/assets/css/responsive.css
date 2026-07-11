@@ -3,11 +3,6 @@
    Breakpoints: sm ≥576px | md ≥768px | lg ≥992px
    ============================================================ */
 
-/* ── Variables ─────────────────────────────────────────────── */
-:root {
-    --sidebar-width: 250px;
-}
-
 /* ── Base mobile (< 576px) ─────────────────────────────────── */
 
 /* Stack cards full-width */
@@ -93,13 +88,7 @@
 
 /* ── Large (lg ≥992px) ─────────────────────────────────────── */
 @media (min-width: 992px) {
-    .app-sidebar {
-        width: var(--sidebar-width);
-    }
-
-    .app-main {
-        margin-left: var(--sidebar-width);
-    }
+    /* .app-sidebar width y offset de main los controla sidebar.css + AdminLTE CSS Grid */
 
     .card-group-sm > .card {
         flex: 1 1 calc(25% - 0.75rem);

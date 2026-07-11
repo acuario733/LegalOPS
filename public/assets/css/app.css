@@ -1,36 +1,41 @@
-:root {
-    --legalops-navy: #172a46;
-    --legalops-gold: #b48a3c;
+/*
+ * app.css — Estilos específicos de la aplicación.
+ * Los tokens globales viven en design-system.css.
+ * Los estilos del sidebar viven en sidebar.css.
+ * Las variables --legalops-navy y --legalops-gold fueron eliminadas (duplicados).
+ */
+
+/* ── Modales: scroll interno (AdminLTE sobreescribe Bootstrap) ──────── */
+/*
+ * AdminLTE 4 anula el max-height y overflow del modal-content,
+ * lo que rompe modal-dialog-scrollable. Forzamos los valores de Bootstrap 5.
+ */
+.modal-dialog-scrollable {
+    height: calc(100% - 3.5rem);
 }
 
-.legalops-brand-mark {
-    align-items: center;
-    background: var(--legalops-gold);
-    border-radius: 0.65rem;
-    color: #fff;
-    display: inline-flex;
-    font-weight: 700;
-    height: 2rem;
-    justify-content: center;
-    width: 2rem;
+.modal-dialog-scrollable .modal-content {
+    max-height: 100%;
+    overflow: hidden;
 }
 
-.app-sidebar {
-    --lte-sidebar-bg: var(--legalops-navy);
+.modal-dialog-scrollable .modal-body {
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
+/* ── Página /health ─────────────────────────────────────────── */
 .health-hero {
-    background: linear-gradient(135deg, #172a46, #234a72);
+    background: linear-gradient(135deg, var(--color-navy), var(--color-navy-light));
     border: 0;
     color: #fff;
 }
 
 .health-dot {
-    background: #28a745;
+    background: var(--color-green);
     border-radius: 50%;
-    box-shadow: 0 0 0 0.35rem rgb(40 167 69 / 18%);
+    box-shadow: 0 0 0 0.35rem rgba(26, 107, 69, 0.18);
     display: inline-block;
     height: 0.75rem;
     width: 0.75rem;
 }
-
