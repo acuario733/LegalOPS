@@ -21,14 +21,14 @@
             <div class="card-header"><h2 class="card-title">Tickets</h2></div>
             <div class="table-responsive">
                 <table class="table align-middle mb-0">
-                    <thead><tr><th>Ticket</th><th>Prioridad</th><th>Estado</th><th>Fecha</th><th></th></tr></thead>
+                    <thead><tr><th>Ticket</th><th>Prioridad</th><th>Estado</th><th>SLA</th><th></th></tr></thead>
                     <tbody>
                     <?php foreach ($tickets['items'] as $ticket): ?>
                         <tr>
                             <td><strong><?= e($ticket['asunto']) ?></strong><div class="small text-secondary"><?= e($ticket['categoria'] ?? '') ?></div></td>
                             <td><?= e($ticket['prioridad']) ?></td>
                             <td><?= e($ticket['estado']) ?></td>
-                            <td class="small text-secondary"><?= e($ticket['updated_at']) ?></td>
+                            <td class="small text-secondary">Respuesta: <?= e($ticket['primera_respuesta_due_at'] ?? '') ?><br>Solucion: <?= e($ticket['solucion_due_at'] ?? '') ?></td>
                             <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/soporte/<?= (int) $ticket['id'] ?>">Ver</a></td>
                         </tr>
                     <?php endforeach; ?>

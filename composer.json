@@ -7,7 +7,19 @@
         "php": "^8.2",
         "ext-json": "*",
         "ext-mbstring": "*",
-        "ext-pdo": "*"
+        "ext-pdo": "*",
+        "aws/aws-sdk-php": "^3.300",
+        "chillerlan/php-qrcode": "^5.0",
+        "dompdf/dompdf": "^3.0",
+        "phpmailer/phpmailer": "^6.9",
+        "predis/predis": "^2.2",
+        "smalot/pdfparser": "^2.12.5",
+        "stripe/stripe-php": "^17.0"
+    },
+    "require-dev": {
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^11",
+        "squizlabs/php_codesniffer": "^3.13"
     },
     "autoload": {
         "psr-4": {
@@ -16,6 +28,18 @@
         "files": [
             "app/Helpers/functions.php"
         ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "test:unit": "vendor/bin/phpunit --testsuite Unit",
+        "test:ci": "vendor/bin/phpunit --testsuite Phase9Phase10",
+        "phpcs": "vendor/bin/phpcs",
+        "phpstan": "vendor/bin/phpstan analyse"
     },
     "config": {
         "optimize-autoloader": true,

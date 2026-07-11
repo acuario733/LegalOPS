@@ -19,4 +19,3 @@ final class RolValidator extends Validator
         ]);
     }
 }
-

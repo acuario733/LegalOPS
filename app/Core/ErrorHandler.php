@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace App\Core;
 
+use App\Monitoring\ErrorReporter;
 use ErrorException;
 use PDOException;
 use Throwable;
 
 final class ErrorHandler
 {
-    public function __construct(private readonly string $logPath)
-    {
+    public function __construct(
+        private readonly string $logPath,
+        private readonly ?ErrorReporter $reporter = null,
+    ) {
     }
+
 
     public function register(): void
     {
@@ -45,6 +49,7 @@ final class ErrorHandler
     {
         $correlationId = bin2hex(random_bytes(8));
         $this->writeLog($exception, $request, $correlationId);
+        $this->reporter?->report($exception, $correlationId, $request->uri());
 
         $status = $exception instanceof HttpException ? $exception->status() : 500;
         $message = $exception instanceof HttpException
@@ -88,14 +93,20 @@ HTML;
             : $this->sanitize($exception->getMessage());
 
         $record = [
+            'ts' => gmdate('c'),
             'timestamp' => gmdate('c'),
-            'correlation_id' => $correlationId,
+            'level' => 'ERROR',
+            'cid' => $correlationId,
+            'firm' => $request->getAttribute('api_firma_id'),
+            'uid' => $request->getAttribute('api_usuario_id'),
             'exception' => $exception::class,
             'message' => $message,
             'file' => basename($exception->getFile()),
             'line' => $exception->getLine(),
             'method' => $request->method(),
-            'uri' => $request->uri(),
+            'path' => $request->uri(),
+            'status' => $exception instanceof HttpException ? $exception->status() : 500,
+            'ms' => null,
             'ip' => $request->ip(),
         ];
 
@@ -115,4 +126,3 @@ HTML;
         return preg_replace($patterns, '$1=[REDACTED]', $message) ?? 'Error interno';
     }
 }
-

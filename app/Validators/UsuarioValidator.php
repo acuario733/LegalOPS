@@ -26,7 +26,7 @@ final class UsuarioValidator extends Validator
             'nombre' => 'required|min:3|max:160',
             'email' => 'required|email|max:254',
             'tipo' => 'required|enum:interno,cliente_externo',
+            'estado' => 'required|enum:activo,inactivo',
         ]);
     }
 }
-

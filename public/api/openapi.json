@@ -1,0 +1,239 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "LegalOPS Cloud API",
+    "version": "1.0.0",
+    "description": "API publica multiempresa de LegalOPS Cloud."
+  },
+  "servers": [{"url": "/api/v1"}],
+  "security": [{"bearerAuth": []}],
+  "paths": {
+    "/clientes": {
+      "get": {
+        "summary": "Lista clientes",
+        "x-required-scope": "clientes:read",
+        "parameters": [{"$ref": "#/components/parameters/Pagina"}, {"$ref": "#/components/parameters/PorPagina"}],
+        "responses": {"200": {"$ref": "#/components/responses/Success"}, "403": {"$ref": "#/components/responses/Forbidden"}}
+      }
+    },
+    "/clientes/{id}": {
+      "get": {
+        "summary": "Consulta un cliente",
+        "x-required-scope": "clientes:read",
+        "parameters": [{"$ref": "#/components/parameters/Id"}],
+        "responses": {"200": {"$ref": "#/components/responses/Success"}, "404": {"$ref": "#/components/responses/NotFound"}}
+      }
+    },
+    "/casos": {
+      "get": {
+        "summary": "Lista casos",
+        "x-required-scope": "casos:read",
+        "responses": {"200": {"$ref": "#/components/responses/Success"}}
+      }
+    },
+    "/casos/{id}": {
+      "get": {
+        "summary": "Consulta un caso",
+        "x-required-scope": "casos:read",
+        "parameters": [{"$ref": "#/components/parameters/Id"}],
+        "responses": {"200": {"$ref": "#/components/responses/Success"}, "404": {"$ref": "#/components/responses/NotFound"}}
+      }
+    },
+    "/tareas": {
+      "get": {
+        "summary": "Lista tareas",
+        "x-required-scope": "tareas:read",
+        "responses": {"200": {"$ref": "#/components/responses/Success"}}
+      }
+    },
+    "/tareas/{id}": {
+      "get": {
+        "summary": "Consulta una tarea",
+        "x-required-scope": "tareas:read",
+        "parameters": [{"$ref": "#/components/parameters/Id"}],
+        "responses": {"200": {"$ref": "#/components/responses/Success"}, "404": {"$ref": "#/components/responses/NotFound"}}
+      }
+    },
+    "/honorarios": {
+      "get": {
+        "summary": "Lista honorarios",
+        "x-required-scope": "billing:read",
+        "parameters": [{"$ref": "#/components/parameters/Pagina"}, {"$ref": "#/components/parameters/PorPagina"}],
+        "responses": {"200": {"$ref": "#/components/responses/Success"}, "403": {"$ref": "#/components/responses/Forbidden"}}
+      },
+      "post": {
+        "summary": "Crea un honorario",
+        "x-required-scope": "billing:write",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HonorarioInput"}}}},
+        "responses": {"201": {"$ref": "#/components/responses/Success"}, "403": {"$ref": "#/components/responses/Forbidden"}, "422": {"$ref": "#/components/responses/Validation"}}
+      }
+    },
+    "/pagos": {
+      "get": {
+        "summary": "Lista pagos",
+        "x-required-scope": "billing:read",
+        "responses": {"200": {"$ref": "#/components/responses/Success"}}
+      },
+      "post": {
+        "summary": "Registra un pago",
+        "x-required-scope": "billing:write",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PagoInput"}}}},
+        "responses": {"201": {"$ref": "#/components/responses/Success"}, "422": {"$ref": "#/components/responses/Validation"}}
+      }
+    },
+    "/documentos": {
+      "get": {
+        "summary": "Lista documentos",
+        "x-required-scope": "documents:read",
+        "responses": {"200": {"$ref": "#/components/responses/Success"}}
+      },
+      "post": {
+        "summary": "Carga un documento",
+        "x-required-scope": "documents:write",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["archivo", "titulo"],
+                "properties": {
+                  "archivo": {"type": "string", "format": "binary"},
+                  "titulo": {"type": "string"},
+                  "cliente_id": {"type": "integer"},
+                  "caso_id": {"type": "integer"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {"201": {"$ref": "#/components/responses/Success"}, "422": {"$ref": "#/components/responses/Validation"}}
+      }
+    },
+    "/documentos/{id}/descargar": {
+      "get": {
+        "summary": "Obtiene descarga presignada",
+        "x-required-scope": "documents:read",
+        "parameters": [{"$ref": "#/components/parameters/Id"}],
+        "responses": {"302": {"description": "Redirect a almacenamiento presignado"}, "404": {"$ref": "#/components/responses/NotFound"}}
+      }
+    },
+    "/time-entries": {
+      "get": {
+        "summary": "Lista registros de tiempo",
+        "x-required-scope": "billing:read",
+        "responses": {"200": {"$ref": "#/components/responses/Success"}}
+      },
+      "post": {
+        "summary": "Registra tiempo",
+        "x-required-scope": "billing:write",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TimeEntryInput"}}}},
+        "responses": {"201": {"$ref": "#/components/responses/Success"}, "422": {"$ref": "#/components/responses/Validation"}}
+      }
+    },
+    "/webhooks": {
+      "get": {
+        "summary": "Lista webhooks",
+        "x-required-scope": "webhooks:read",
+        "responses": {"200": {"$ref": "#/components/responses/Success"}}
+      },
+      "post": {
+        "summary": "Crea un webhook",
+        "x-required-scope": "webhooks:write",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WebhookInput"}}}},
+        "responses": {"201": {"$ref": "#/components/responses/Success"}, "422": {"$ref": "#/components/responses/Validation"}}
+      }
+    },
+    "/webhooks/{id}": {
+      "patch": {
+        "summary": "Actualiza un webhook",
+        "x-required-scope": "webhooks:write",
+        "parameters": [{"$ref": "#/components/parameters/Id"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WebhookInput"}}}},
+        "responses": {"200": {"$ref": "#/components/responses/Success"}}
+      },
+      "delete": {
+        "summary": "Elimina un webhook",
+        "x-required-scope": "webhooks:write",
+        "parameters": [{"$ref": "#/components/parameters/Id"}],
+        "responses": {"200": {"$ref": "#/components/responses/Success"}}
+      }
+    },
+    "/webhooks/{id}/entregas": {
+      "get": {
+        "summary": "Historial de entregas",
+        "x-required-scope": "webhooks:read",
+        "parameters": [{"$ref": "#/components/parameters/Id"}],
+        "responses": {"200": {"$ref": "#/components/responses/Success"}}
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "API token"}
+    },
+    "parameters": {
+      "Id": {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}},
+      "Pagina": {"name": "pagina", "in": "query", "schema": {"type": "integer", "minimum": 1, "default": 1}},
+      "PorPagina": {"name": "por_pagina", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25}}
+    },
+    "schemas": {
+      "Envelope": {
+        "type": "object",
+        "required": ["ok", "message", "data", "errors"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "message": {"type": "string"},
+          "data": {},
+          "errors": {"type": "object"}
+        }
+      },
+      "HonorarioInput": {
+        "type": "object",
+        "required": ["cliente_id", "concepto", "monto"],
+        "properties": {
+          "cliente_id": {"type": "integer"},
+          "caso_id": {"type": "integer", "nullable": true},
+          "concepto": {"type": "string"},
+          "monto": {"type": "number"},
+          "moneda": {"type": "string", "example": "COP"}
+        }
+      },
+      "PagoInput": {
+        "type": "object",
+        "required": ["cliente_id", "monto", "metodo_pago"],
+        "properties": {
+          "cliente_id": {"type": "integer"},
+          "honorario_id": {"type": "integer", "nullable": true},
+          "monto": {"type": "number"},
+          "metodo_pago": {"type": "string"}
+        }
+      },
+      "TimeEntryInput": {
+        "type": "object",
+        "required": ["caso_id", "descripcion", "fecha", "duracion_minutos"],
+        "properties": {
+          "caso_id": {"type": "integer"},
+          "descripcion": {"type": "string"},
+          "fecha": {"type": "string", "format": "date"},
+          "duracion_minutos": {"type": "integer"}
+        }
+      },
+      "WebhookInput": {
+        "type": "object",
+        "required": ["url", "eventos"],
+        "properties": {
+          "url": {"type": "string", "format": "uri"},
+          "eventos": {"type": "array", "items": {"type": "string"}},
+          "activo": {"type": "boolean"}
+        }
+      }
+    },
+    "responses": {
+      "Success": {"description": "Operacion correcta", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Envelope"}}}},
+      "Forbidden": {"description": "Scope insuficiente", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Envelope"}}}},
+      "NotFound": {"description": "No encontrado", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Envelope"}}}},
+      "Validation": {"description": "Error de validacion", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Envelope"}}}}
+    }
+  }
+}

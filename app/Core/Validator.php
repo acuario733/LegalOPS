@@ -73,6 +73,8 @@ class Validator
             'integer' => filter_var($value, FILTER_VALIDATE_INT) !== false,
             'enum', 'in' => in_array((string) $value, $parameters, true),
             'file' => $this->isValidFile($file),
+            'documento' => is_string($value) && preg_match('/^[0-9]{6,}$/', $value) === 1,
+            'phone' => is_string($value) && preg_match('/^\+?[0-9\s\-\(\)]{7,}$/', $value) === 1,
             default => false,
         };
     }
@@ -126,8 +128,9 @@ class Validator
             'integer' => sprintf('El campo %s debe ser un entero.', $label),
             'enum', 'in' => sprintf('El valor seleccionado para %s no es válido.', $label),
             'file' => sprintf('El archivo %s no es válido.', $label),
+            'documento' => sprintf('El campo %s debe tener mínimo 6 dígitos numéricos.', $label),
+            'phone' => sprintf('El campo %s debe ser un teléfono válido (mínimo 7 caracteres).', $label),
             default => sprintf('El campo %s no es válido.', $label),
         };
     }
 }
-

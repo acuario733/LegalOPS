@@ -9,6 +9,7 @@ use App\Core\HttpException;
 use App\Core\Request;
 use App\Core\Response;
 use App\Services\AuditoriaService;
+use App\Services\ReporteService;
 
 final class AuditoriaController extends Controller
 {
@@ -28,9 +29,23 @@ final class AuditoriaController extends Controller
         ], $superadmin ? 'superadmin' : 'app');
     }
 
+    public function export(Request $request): Response
+    {
+        $userId = $this->auth->id();
+        if ($userId === null) {
+            throw new HttpException(403, 'La operacion requiere usuario autenticado.');
+        }
+        $this->container->get(ReporteService::class)->exportAudit(
+            $this->firmaId(),
+            (array) $request->query(),
+            (int) $userId
+        );
+
+        return $this->json(null, 'El archivo estara listo en unos segundos. Recibiras una notificacion.');
+    }
+
     private function firmaId(): int
     {
         return $this->currentFirma() === null ? throw new HttpException(403, 'La operación requiere una firma activa.') : (int) $this->currentFirma();
     }
 }
-

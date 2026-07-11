@@ -28,4 +28,3 @@ final class HttpException extends RuntimeException
         return $this->errors;
     }
 }
-

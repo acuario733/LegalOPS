@@ -125,6 +125,21 @@ final class NotificacionRepository extends BaseRepository
         return is_array($row) ? $row : null;
     }
 
+    /** @return array<string, mixed>|null */
+    public function trustAccount(int $firmaId, int $trustAccountId): ?array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT a.id,a.firma_id,a.cliente_id,a.caso_id,a.saldo,a.moneda,cl.nombre_razon_social AS cliente_nombre
+             FROM trust_accounts a
+             INNER JOIN clientes cl ON cl.id=a.cliente_id AND cl.firma_id=a.firma_id
+             WHERE a.id=:id AND a.firma_id=:firma_id AND a.deleted_at IS NULL'
+        );
+        $statement->execute(['id' => $trustAccountId, 'firma_id' => $firmaId]);
+        $row = $statement->fetch();
+
+        return is_array($row) ? $row : null;
+    }
+
     /** @return list<array<string, mixed>> */
     public function dueTerms(): array
     {

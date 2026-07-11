@@ -9,6 +9,9 @@ final class Request
     /** @var array<string, string> */
     private array $routeParameters = [];
 
+    /** @var array<string, mixed> Atributos de middleware (ej: api_firma_id, api_scopes) */
+    private array $attributes = [];
+
     /**
      * @param array<string, mixed> $query
      * @param array<string, mixed> $body
@@ -25,7 +28,8 @@ final class Request
         private readonly array $json = [],
         private readonly array $files = [],
         private readonly array $headers = [],
-        private readonly array $server = []
+        private readonly array $server = [],
+        private readonly string $rawBody = ''
     ) {
     }
 
@@ -79,7 +83,8 @@ final class Request
             $json,
             $_FILES,
             $headers,
-            $_SERVER
+            $_SERVER,
+            is_string($rawBody) ? $rawBody : ''
         );
     }
 
@@ -131,6 +136,11 @@ final class Request
         return $this->headers[strtolower($name)] ?? $default;
     }
 
+    public function rawBody(): string
+    {
+        return $this->rawBody;
+    }
+
     /** @return array<string, string> */
     public function headers(): array
     {
@@ -162,6 +172,25 @@ final class Request
     public function isSafeMethod(): bool
     {
         return in_array($this->method, ['GET', 'HEAD', 'OPTIONS'], true);
+    }
+
+    /**
+     * Establece un atributo de request (usado por middleware para pasar contexto a controllers).
+     */
+    public function setAttribute(string $key, mixed $value): void
+    {
+        $this->attributes[$key] = $value;
+    }
+
+    public function getAttribute(string $key, mixed $default = null): mixed
+    {
+        return $this->attributes[$key] ?? $default;
+    }
+
+    /** @return array<string, mixed> */
+    public function attributes(): array
+    {
+        return $this->attributes;
     }
 
     /** @param array<string, string> $parameters */

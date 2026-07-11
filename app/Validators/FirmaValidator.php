@@ -18,4 +18,3 @@ final class FirmaValidator extends Validator
         ]);
     }
 }
-

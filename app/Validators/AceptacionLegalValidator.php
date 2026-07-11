@@ -19,4 +19,3 @@ final class AceptacionLegalValidator extends Validator
         ]);
     }
 }
-

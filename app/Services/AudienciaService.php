@@ -26,7 +26,8 @@ final class AudienciaService
         private readonly AudienciaValidator $validator,
         private readonly LimitePlanService $limits,
         private readonly AuditoriaService $audit,
-        private readonly Auth $auth
+        private readonly Auth $auth,
+        private readonly CatalogoLookupService $catalogs
     ) {
     }
 
@@ -52,7 +53,7 @@ final class AudienciaService
     /** @param array<string, mixed> $data */
     public function create(int $firmaId, array $data, Request $request): int
     {
-        $this->limits->requireCapacity($firmaId, 'audiencias');
+        $this->limits->requireCapacity($firmaId, 'audiencias', $request);
         $normalized = $this->normalize($firmaId, $data);
         $this->validateRelations($firmaId, $normalized);
         if (!$this->validator->validateData($normalized)) {
@@ -115,7 +116,9 @@ final class AudienciaService
             'hora' => $this->timeValue($data['hora'] ?? ($before['hora'] ?? '08:00')),
             'timezone' => $timezone,
             'modalidad' => (string) ($data['modalidad'] ?? ($before['modalidad'] ?? 'presencial')),
-            'despacho' => $this->nullableString($data['despacho'] ?? ($before['despacho'] ?? null), 180),
+            'despacho' => $this->catalogs->normalizeOptional($firmaId, 'despacho', $data['despacho'] ?? ($before['despacho'] ?? null), 'Despacho'),
+            'juez_responsable' => $this->nullableString($data['juez_responsable'] ?? ($before['juez_responsable'] ?? null), 180),
+            'despacho_contacto' => $this->nullableString($data['despacho_contacto'] ?? ($before['despacho_contacto'] ?? null), 255),
             'lugar' => $this->nullableString($data['lugar'] ?? ($before['lugar'] ?? null), 255),
             'enlace' => $this->nullableString($data['enlace'] ?? ($before['enlace'] ?? null), 500),
             'estado' => (string) ($data['estado'] ?? ($before['estado'] ?? 'programada')),
@@ -135,6 +138,8 @@ final class AudienciaService
             'timezone' => $data['timezone'],
             'modalidad' => $data['modalidad'],
             'despacho' => $data['despacho'],
+            'juez_responsable' => $data['juez_responsable'],
+            'despacho_contacto' => $data['despacho_contacto'],
             'lugar' => $data['lugar'],
             'enlace' => $data['enlace'],
             'estado' => $data['estado'],

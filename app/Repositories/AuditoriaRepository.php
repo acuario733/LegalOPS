@@ -15,7 +15,7 @@ final class AuditoriaRepository extends BaseRepository
             'INSERT INTO auditoria
             (firma_id, usuario_id, accion, modulo, entidad_tipo, entidad_id, severidad, correlation_id, ip_address, user_agent, metadata, created_at)
             VALUES
-            (:firma_id, :usuario_id, :accion, :modulo, :entidad_tipo, :entidad_id, :severidad, :correlation_id, :ip_address, :user_agent, :metadata, CURRENT_TIMESTAMP(6))'
+            (:firma_id, :usuario_id, :accion, :modulo, :entidad_tipo, :entidad_id, :severidad, :correlation_id, :ip_address, :user_agent, :metadata, CURRENT_TIMESTAMP)'
         );
         $statement->execute([
             'firma_id' => $event['firma_id'],
@@ -83,4 +83,3 @@ final class AuditoriaRepository extends BaseRepository
         return ['items' => $query->fetchAll(), 'total' => (int) $count->fetchColumn()];
     }
 }
-

@@ -75,6 +75,15 @@ final class Session
         unset($_SESSION[$key]);
     }
 
+    public function pull(string $key, mixed $default = null): mixed
+    {
+        $this->ensureStarted();
+        $value = $_SESSION[$key] ?? $default;
+        unset($_SESSION[$key]);
+
+        return $value;
+    }
+
     public function flash(string $key, mixed $value): void
     {
         $this->ensureStarted();
@@ -116,7 +125,7 @@ final class Session
                 'domain' => $params['domain'],
                 'secure' => $params['secure'],
                 'httponly' => $params['httponly'],
-                'samesite' => $params['samesite'] ?? 'Lax',
+                'samesite' => $params['samesite'],
             ]);
         }
 
@@ -147,4 +156,3 @@ final class Session
         return in_array($normalized, ['Lax', 'Strict', 'None'], true) ? $normalized : 'Lax';
     }
 }
-

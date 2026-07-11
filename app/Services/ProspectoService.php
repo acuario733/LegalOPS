@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Core\Database;
 use App\Core\HttpException;
 use App\Core\Request;
+use App\Core\Auth;
 use App\Repositories\ClienteRepository;
 use App\Repositories\ProspectoRepository;
 use App\Repositories\UsuarioRepository;
@@ -21,7 +22,11 @@ final class ProspectoService
         private readonly ProspectoValidator $validator,
         private readonly ClienteService $clienteService,
         private readonly Database $database,
-        private readonly AuditoriaService $audit
+        private readonly AuditoriaService $audit,
+        private readonly CatalogoLookupService $catalogs,
+        private readonly ContactDeduplicationService $deduplication,
+        private readonly Auth $auth,
+        private readonly ?WebhookService $webhooks = null
     ) {
     }
 
@@ -54,8 +59,21 @@ final class ProspectoService
             'estado' => $normalized['estado'],
             'responsable_usuario_id' => $normalized['responsable_usuario_id'],
         ], $request, $firmaId);
+        $this->webhooks?->dispatch($firmaId, 'lead.created', ['id' => $id, 'estado' => $normalized['estado']]);
 
         return $id;
+    }
+
+    /** @param array<string, mixed> $data @return array{id: int, posibles_duplicados: list<array{id: int, nombre: string, tipo: string}>} */
+    public function createWithDuplicateInfo(int $firmaId, array $data, Request $request): array
+    {
+        $duplicates = $this->deduplication->checkDuplicates(
+            $firmaId,
+            isset($data['email']) ? (string) $data['email'] : null,
+            $this->deduplication->documentHash(isset($data['numero_documento']) ? (string) $data['numero_documento'] : null)
+        );
+
+        return ['id' => $this->create($firmaId, $data, $request), 'posibles_duplicados' => $duplicates];
     }
 
     /** @param array<string, mixed> $data */
@@ -82,6 +100,7 @@ final class ProspectoService
             throw new HttpException(422, 'El estado seleccionado no es valido.', $this->validator->errors());
         }
         $this->repository->setStatus($firmaId, $id, $status);
+        $this->repository->recordStatusChange($firmaId, $id, (string) $before['estado'], $status, (int) ($this->auth->id() ?? 0));
         $this->audit->record('PROSPECTO_MODIFICADO', 'prospectos', 'prospecto', $id, [
             'anterior' => ['estado' => $before['estado']],
             'nuevo' => ['estado' => $status],
@@ -105,10 +124,12 @@ final class ProspectoService
                 : (int) $existing['id'];
 
             $this->repository->markConverted($firmaId, $id, $clienteId);
+            $this->repository->recordStatusChange($firmaId, $id, (string) $prospect['estado'], 'ganado', null);
             $this->audit->record('PROSPECTO_CONVERTIDO', 'prospectos', 'prospecto', $id, [
                 'cliente_id' => $clienteId,
                 'modo' => $existing === null ? 'creado' : 'vinculado',
             ], $request, $firmaId);
+            $this->webhooks?->dispatch($firmaId, 'lead.converted', ['id' => $id, 'cliente_id' => $clienteId]);
 
             return $clienteId;
         });
@@ -128,7 +149,7 @@ final class ProspectoService
             'origen' => 'prospecto',
             'observaciones' => $prospect['notas'],
             'tratamiento_datos_autorizado' => (int) $prospect['tratamiento_datos_autorizado'] === 1 ? '1' : '0',
-            'autorizacion_medio' => 'prospecto',
+            'autorizacion_medio' => 'registro_interno',
             'autorizacion_version' => 'operacion-juridica-v1',
         ];
     }
@@ -148,13 +169,13 @@ final class ProspectoService
             'tipo_persona' => (string) ($data['tipo_persona'] ?? ($before['tipo_persona'] ?? 'natural')),
             'email' => $this->nullableString($data['email'] ?? ($before['email'] ?? null), 254, true),
             'telefono' => $this->nullableString($data['telefono'] ?? ($before['telefono'] ?? null), 60),
-            'tipo_documento' => $this->nullableString($data['tipo_documento'] ?? ($before['tipo_documento'] ?? null), 40),
+            'tipo_documento' => $this->catalogs->normalizeOptional($firmaId, 'tipo_documento', $data['tipo_documento'] ?? ($before['tipo_documento'] ?? null), 'Tipo de documento'),
             'numero_documento' => $this->nullableString($document, 80),
             'documento_normalizado' => $documentNormalized === '' ? null : $documentNormalized,
             'documento_hash' => $documentNormalized === '' ? null : hash('sha256', $documentNormalized),
             'empresa' => $this->nullableString($company, 180),
             'empresa_normalizada' => $company === '' ? null : $this->normalizeText($company, 180),
-            'fuente' => $this->nullableString($data['fuente'] ?? ($before['fuente'] ?? null), 120),
+            'fuente' => $this->catalogs->normalizeOptional($firmaId, 'origen_fuente', $data['fuente'] ?? ($before['fuente'] ?? null), 'Fuente'),
             'estado' => (string) ($data['estado'] ?? ($before['estado'] ?? 'nuevo')),
             'responsable_usuario_id' => $this->nullableInt($data['responsable_usuario_id'] ?? ($before['responsable_usuario_id'] ?? null)),
             'valor_estimado' => $this->nullableDecimal($data['valor_estimado'] ?? ($before['valor_estimado'] ?? null)),

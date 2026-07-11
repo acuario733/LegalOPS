@@ -25,7 +25,10 @@ final class PagoService
         private readonly LimitePlanService $limits,
         private readonly Database $database,
         private readonly AuditoriaService $audit,
-        private readonly Auth $auth
+        private readonly Auth $auth,
+        private readonly CatalogoLookupService $catalogs,
+        private readonly DashboardService $dashboard,
+        private readonly ?WebhookService $webhooks = null
     ) {
     }
 
@@ -49,7 +52,7 @@ final class PagoService
     /** @param array<string, mixed> $data */
     public function create(int $firmaId, array $data, Request $request): int
     {
-        $this->limits->requireCapacity($firmaId, 'pagos');
+        $this->limits->requireCapacity($firmaId, 'pagos', $request);
         $normalized = $this->validateRelations($firmaId, $this->normalize($firmaId, $data));
         if ((float) $normalized['monto'] <= 0) {
             throw new HttpException(422, 'El monto del pago debe ser mayor a cero.');
@@ -59,7 +62,25 @@ final class PagoService
         }
 
         return $this->database->transaction(function () use ($firmaId, $normalized, $request): int {
+            if ($this->repository->duplicateExists($this->recordData($normalized))) {
+                throw new HttpException(409, 'Ya existe un pago registrado con los mismos datos principales.');
+            }
+            if ($normalized['honorario_id'] !== null) {
+                $fee = $this->honorarios->findForFirma($firmaId, (int) $normalized['honorario_id']) ?? throw new HttpException(422, 'El honorario seleccionado no pertenece a la firma.');
+                if (in_array($fee['estado'], ['cancelado', 'anulado'], true)) {
+                    throw new HttpException(422, 'No se pueden registrar pagos sobre un honorario cancelado.');
+                }
+                $paid = $this->honorarios->totalPaid($firmaId, (int) $normalized['honorario_id']);
+                $balance = max(0.0, (float) $fee['monto'] - $paid);
+                if ((float) $normalized['monto'] > $balance + 0.00001) {
+                    throw new HttpException(422, 'El pago supera el saldo pendiente del honorario.');
+                }
+            }
             $id = $this->repository->create($this->recordData($normalized));
+            if ($normalized['honorario_id'] !== null && !in_array($fee['estado'], ['cancelado', 'anulado'], true)) {
+                $paid = $this->honorarios->totalPaid($firmaId, (int) $normalized['honorario_id']);
+                $this->honorarios->updateStatus($firmaId, (int) $normalized['honorario_id'], $paid + 0.00001 >= (float) $fee['monto'] ? 'pagado' : 'parcial');
+            }
             $this->audit->record('PAGO_REGISTRADO', 'finanzas', 'pago', $id, [
                 'cliente_id' => $normalized['cliente_id'],
                 'caso_id' => $normalized['caso_id'],
@@ -67,6 +88,13 @@ final class PagoService
                 'monto' => $normalized['monto'],
                 'referencia_hash' => $normalized['referencia_hash'],
             ], $request, $firmaId, 'warning');
+            $this->dashboard->invalidateKpis($firmaId);
+            $this->webhooks?->dispatch($firmaId, 'payment.received', [
+                'id' => $id,
+                'honorario_id' => $normalized['honorario_id'],
+                'monto' => $normalized['monto'],
+                'moneda' => $normalized['moneda'],
+            ]);
 
             return $id;
         });
@@ -82,6 +110,36 @@ final class PagoService
         ], $request, $firmaId, 'warning');
 
         return ['campo' => 'referencia', 'etiqueta' => 'Referencia', 'valor' => $reference];
+    }
+
+    /** @param array<string, mixed> $data */
+    public function annul(int $firmaId, int $id, array $data, Request $request): void
+    {
+        $payment = $this->raw($firmaId, $id);
+        if ($payment['estado'] === 'anulado') {
+            throw new HttpException(409, 'El pago ya esta anulado.');
+        }
+        $reason = $this->requiredReason($data['motivo'] ?? null);
+
+        $this->database->transaction(function () use ($firmaId, $id, $payment, $reason, $request): void {
+            $this->repository->updateStatus($firmaId, $id, 'anulado');
+            if ($payment['honorario_id'] !== null) {
+                $fee = $this->honorarios->findForFirma($firmaId, (int) $payment['honorario_id']);
+                if ($fee !== null && $fee['estado'] !== 'cancelado') {
+                    $paid = $this->honorarios->totalPaid($firmaId, (int) $payment['honorario_id']);
+                    $this->honorarios->updateStatus($firmaId, (int) $payment['honorario_id'], $paid <= 0.0 ? 'pendiente' : ($paid + 0.00001 >= (float) $fee['monto'] ? 'pagado' : 'parcial'));
+                }
+            }
+            $this->audit->record('PAGO_ANULADO', 'finanzas', 'pago', $id, [
+                'cliente_id' => $payment['cliente_id'],
+                'caso_id' => $payment['caso_id'],
+                'honorario_id' => $payment['honorario_id'],
+                'monto' => $payment['monto'],
+                'moneda' => $payment['moneda'],
+                'referencia_hash' => $payment['referencia_hash'] ?? null,
+                'motivo' => $reason,
+            ], $request, $firmaId, 'warning');
+        });
     }
 
     /** @return array<string, mixed> */
@@ -102,8 +160,8 @@ final class PagoService
             'honorario_id' => $this->nullableInt($data['honorario_id'] ?? null),
             'fecha_pago' => $this->dateValue($data['fecha_pago'] ?? date('Y-m-d')),
             'monto' => $this->money($data['monto'] ?? 0),
-            'moneda' => strtoupper(mb_substr(trim((string) ($data['moneda'] ?? 'COP')), 0, 3)),
-            'metodo_pago' => $this->nullableString($data['metodo_pago'] ?? null, 80) ?? '',
+            'moneda' => $this->catalogs->normalizeRequired($firmaId, 'moneda', $data['moneda'] ?? 'COP', 'Moneda'),
+            'metodo_pago' => $this->catalogs->normalizeRequired($firmaId, 'metodo_pago', $data['metodo_pago'] ?? null, 'Metodo de pago'),
             'referencia' => $reference,
             'referencia_hash' => $reference === null ? null : hash('sha256', $reference),
             'estado' => (string) ($data['estado'] ?? 'registrado'),
@@ -119,6 +177,7 @@ final class PagoService
             $fee = $this->honorarios->findForFirma($firmaId, (int) $data['honorario_id']) ?? throw new HttpException(422, 'El honorario seleccionado no pertenece a la firma.');
             $data['cliente_id'] = (int) $fee['cliente_id'];
             $data['caso_id'] = $this->nullableInt($fee['caso_id'] ?? null);
+            $data['moneda'] = (string) $fee['moneda'];
         }
         if ($this->clientes->findForFirma($firmaId, (int) $data['cliente_id']) === null) {
             throw new HttpException(422, 'El cliente seleccionado no pertenece a la firma.');
@@ -170,7 +229,7 @@ final class PagoService
             'cliente_id' => $this->nullableInt($filters['cliente_id'] ?? null),
             'caso_id' => $this->nullableInt($filters['caso_id'] ?? null),
             'honorario_id' => $this->nullableInt($filters['honorario_id'] ?? null),
-            'estado' => in_array(($filters['estado'] ?? ''), ['registrado', 'anulado'], true) ? $filters['estado'] : '',
+            'estado' => in_array(($filters['estado'] ?? ''), ['registrado', 'anulado', 'reembolsado'], true) ? $filters['estado'] : '',
         ];
     }
 
@@ -211,5 +270,15 @@ final class PagoService
         $value = trim((string) ($value ?? ''));
 
         return $value === '' ? date('Y-m-d') : mb_substr($value, 0, 10);
+    }
+
+    private function requiredReason(mixed $value): string
+    {
+        $reason = trim((string) ($value ?? ''));
+        if (mb_strlen($reason) < 5) {
+            throw new HttpException(422, 'El motivo debe tener al menos 5 caracteres.');
+        }
+
+        return mb_substr($reason, 0, 500);
     }
 }

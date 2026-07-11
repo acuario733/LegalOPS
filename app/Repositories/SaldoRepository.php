@@ -8,6 +8,21 @@ use PDO;
 
 final class SaldoRepository extends BaseRepository
 {
+    private const HONORARIO_ESTADOS_VIGENTES = ['pendiente', 'parcial', 'pagado'];
+    private const PAGO_ESTADOS_VALIDOS = ['registrado'];
+    private const GASTO_ESTADOS_COBRABLES = ['registrado'];
+
+    /** @return array{honorarios: list<string>, pagos: list<string>, gastos: list<string>, expresion: string} */
+    public function formula(): array
+    {
+        return [
+            'honorarios' => self::HONORARIO_ESTADOS_VIGENTES,
+            'pagos' => self::PAGO_ESTADOS_VALIDOS,
+            'gastos' => self::GASTO_ESTADOS_COBRABLES,
+            'expresion' => 'saldo = honorarios_vigentes + gastos_cobrables - pagos_validos',
+        ];
+    }
+
     /** @return array{items: list<array<string, mixed>>, total: int} */
     public function paginateClientes(int $firmaId, int $page = 1, int $perPage = 25): array
     {
@@ -21,9 +36,9 @@ final class SaldoRepository extends BaseRepository
                     COALESCE(g.total_gastos,0) AS total_gastos,
                     (COALESCE(h.total_honorarios,0) + COALESCE(g.total_gastos,0) - COALESCE(p.total_pagos,0)) AS saldo
              FROM clientes cl
-             LEFT JOIN (SELECT cliente_id, SUM(monto) total_honorarios FROM honorarios WHERE firma_id=:firma_h AND estado<>\'cancelado\' AND deleted_at IS NULL GROUP BY cliente_id) h ON h.cliente_id=cl.id
-             LEFT JOIN (SELECT cliente_id, SUM(monto) total_pagos FROM pagos WHERE firma_id=:firma_p AND estado=\'registrado\' AND deleted_at IS NULL GROUP BY cliente_id) p ON p.cliente_id=cl.id
-             LEFT JOIN (SELECT cliente_id, SUM(monto) total_gastos FROM gastos WHERE firma_id=:firma_g AND estado=\'registrado\' AND deleted_at IS NULL GROUP BY cliente_id) g ON g.cliente_id=cl.id
+             LEFT JOIN (SELECT cliente_id, SUM(monto) total_honorarios FROM honorarios WHERE firma_id=:firma_h AND estado IN (\'pendiente\',\'parcial\',\'pagado\') AND deleted_at IS NULL GROUP BY cliente_id) h ON h.cliente_id=cl.id
+             LEFT JOIN (SELECT cliente_id, SUM(monto) total_pagos FROM pagos WHERE firma_id=:firma_p AND estado IN (\'registrado\') AND deleted_at IS NULL GROUP BY cliente_id) p ON p.cliente_id=cl.id
+             LEFT JOIN (SELECT cliente_id, SUM(monto) total_gastos FROM gastos WHERE firma_id=:firma_g AND estado IN (\'registrado\') AND deleted_at IS NULL GROUP BY cliente_id) g ON g.cliente_id=cl.id
              WHERE cl.firma_id=:firma_id AND cl.deleted_at IS NULL
              ORDER BY saldo DESC, cl.nombre_razon_social
              LIMIT :limit OFFSET :offset'
@@ -54,16 +69,23 @@ final class SaldoRepository extends BaseRepository
         }
         $where = ' WHERE ' . implode(' AND ', $conditions);
 
-        $honorarios = $this->sum('honorarios', $where . ' AND estado<>\'cancelado\'', $params);
-        $pagos = $this->sum('pagos', $where . ' AND estado=\'registrado\'', $params);
-        $gastos = $this->sum('gastos', $where . ' AND estado=\'registrado\'', $params);
+        return $this->totals(
+            $this->sum('honorarios', $where . ' AND estado IN (\'pendiente\',\'parcial\',\'pagado\')', $params),
+            $this->sum('pagos', $where . ' AND estado IN (\'registrado\')', $params),
+            $this->sum('gastos', $where . ' AND estado IN (\'registrado\')', $params)
+        );
+    }
 
-        return [
-            'total_honorarios' => $honorarios,
-            'total_pagos' => $pagos,
-            'total_gastos' => $gastos,
-            'saldo' => $honorarios + $gastos - $pagos,
-        ];
+    /** @return array<string, mixed> */
+    public function resumenCliente(int $firmaId, int $clienteId): array
+    {
+        return $this->resumen($firmaId, $clienteId, null);
+    }
+
+    /** @return array<string, mixed> */
+    public function resumenCaso(int $firmaId, int $casoId): array
+    {
+        return $this->resumen($firmaId, null, $casoId);
     }
 
     /** @param array<string, mixed> $params */
@@ -73,5 +95,17 @@ final class SaldoRepository extends BaseRepository
         $statement->execute($params);
 
         return (float) $statement->fetchColumn();
+    }
+
+    /** @return array<string, mixed> */
+    private function totals(float $honorarios, float $pagos, float $gastos): array
+    {
+        return [
+            'total_honorarios' => $honorarios,
+            'total_pagos' => $pagos,
+            'total_gastos' => $gastos,
+            'saldo' => $honorarios + $gastos - $pagos,
+            'formula' => $this->formula(),
+        ];
     }
 }

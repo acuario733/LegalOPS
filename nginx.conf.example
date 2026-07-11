@@ -1,0 +1,73 @@
+# ── Nginx Security Headers para LegalOPS Cloud V2 ────────────────────────────
+# Usar como base en /etc/nginx/sites-available/legalops
+# Equivalente al bloque mod_headers del .htaccess
+
+server {
+    listen 80;
+    server_name yourdomain.com;
+    root /var/www/legalops/public;
+    index index.php;
+
+    # ── Gzip compression ─────────────────────────────────────────────────────
+    gzip on;
+    gzip_types text/html text/plain text/css application/javascript application/json
+               application/x-font-ttf font/opentype image/svg+xml;
+    gzip_comp_level 6;
+    gzip_min_length 1000;
+
+    # ── Security Headers ──────────────────────────────────────────────────────
+
+    # Previene MIME sniffing
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Previene Clickjacking
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    # Filtro XSS legacy
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Controla Referer
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Deshabilita APIs de hardware
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=()" always;
+
+    # CSP — ajustar si se agregan CDNs adicionales
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+
+    # HSTS — SOLO producción con SSL (descomentar cuando tengas certificado)
+    # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+    # ── Cache-Control para assets estáticos ──────────────────────────────────
+    location ~* \.(css|js|svg|png|jpg|jpeg|webp|woff2?)$ {
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        # Repetir security headers en este bloque (Nginx no hereda add_header en sub-locations)
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    # ── PHP-FPM ───────────────────────────────────────────────────────────────
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    # ── Denegar archivos ocultos ──────────────────────────────────────────────
+    location ~ /\. {
+        deny all;
+    }
+}
+
+# ── Redirección HTTP → HTTPS (producción) ────────────────────────────────────
+# server {
+#     listen 80;
+#     server_name yourdomain.com;
+#     return 301 https://$host$request_uri;
+# }

@@ -38,13 +38,22 @@
     </div>
     <div class="col-12">
         <div class="card">
+            <div class="card-header"><h2 class="card-title">Linea de tiempo publicada</h2></div>
+            <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Fecha</th><th>Caso</th><th>Evento</th><th>Detalle</th></tr></thead><tbody>
+                <?php foreach ($portal['timeline'] as $evento): ?><tr><td><?= e($evento['fecha_evento']) ?></td><td><?= e($evento['caso_titulo']) ?></td><td><strong><?= e($evento['titulo']) ?></strong><div class="small text-secondary"><?= e($evento['tipo_evento']) ?><?= (int) $evento['critico'] === 1 ? ' / critico' : '' ?></div></td><td><?= e($evento['contenido_publico'] ?? '') ?></td></tr><?php endforeach; ?>
+                <?php if ($portal['timeline'] === []): ?><tr><td colspan="4" class="text-center text-secondary py-4">No hay eventos publicados.</td></tr><?php endif; ?>
+            </tbody></table></div>
+        </div>
+    </div>
+    <div class="col-12">
+        <div class="card">
             <div class="card-header"><h2 class="card-title">Informacion financiera visible</h2></div>
-            <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Tipo</th><th>Concepto</th><th>Monto</th><th>Nota</th></tr></thead><tbody>
+            <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Tipo</th><th>Concepto</th><th>Monto</th><th>Impacto saldo</th><th>Nota</th></tr></thead><tbody>
                 <?php foreach ($portal['finanzas'] as $finanza): ?>
-                    <?php $concepto = $finanza['honorario_concepto'] ?? $finanza['gasto_concepto'] ?? $finanza['metodo_pago'] ?? $finanza['tipo_finanza']; $monto = $finanza['honorario_monto'] ?? $finanza['gasto_monto'] ?? $finanza['pago_monto'] ?? 0; ?>
-                    <tr><td><?= e($finanza['tipo_finanza']) ?></td><td><?= e($concepto) ?></td><td><?= number_format((float) $monto, 2) ?></td><td><?= e($finanza['observacion_publica'] ?? '') ?></td></tr>
+                    <?php $concepto = $finanza['honorario_concepto'] ?? $finanza['gasto_concepto'] ?? $finanza['metodo_pago'] ?? $finanza['tipo_finanza']; $monto = $finanza['honorario_monto'] ?? $finanza['gasto_monto'] ?? $finanza['pago_monto'] ?? 0; $moneda = $finanza['honorario_moneda'] ?? $finanza['gasto_moneda'] ?? $finanza['pago_moneda'] ?? ''; ?>
+                    <tr><td><?= e($finanza['tipo_finanza']) ?></td><td><?= e($concepto) ?></td><td><?= e((string) $moneda) ?> <?= number_format((float) $monto, 2) ?></td><td><?= e((string) $moneda) ?> <?= number_format((float) ($finanza['impacto_saldo'] ?? 0), 2) ?></td><td><?= e($finanza['observacion_publica'] ?? '') ?></td></tr>
                 <?php endforeach; ?>
-                <?php if ($portal['finanzas'] === []): ?><tr><td colspan="4" class="text-center text-secondary py-4">No hay informacion financiera publicada.</td></tr><?php endif; ?>
+                <?php if ($portal['finanzas'] === []): ?><tr><td colspan="5" class="text-center text-secondary py-4">No hay informacion financiera publicada.</td></tr><?php endif; ?>
             </tbody></table></div>
         </div>
     </div>

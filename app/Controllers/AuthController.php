@@ -59,4 +59,3 @@ final class AuthController extends Controller
         return $this->json(['redirect' => '/login'], 'Contraseña actualizada correctamente.');
     }
 }
-

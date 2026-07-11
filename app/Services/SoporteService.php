@@ -13,6 +13,14 @@ use App\Validators\TicketValidator;
 
 final class SoporteService
 {
+    /** @var array<string, array{primera_respuesta_horas: int, solucion_horas: int}> */
+    private const SLA_POLICY = [
+        'critica' => ['primera_respuesta_horas' => 2, 'solucion_horas' => 24],
+        'alta' => ['primera_respuesta_horas' => 4, 'solucion_horas' => 48],
+        'media' => ['primera_respuesta_horas' => 8, 'solucion_horas' => 72],
+        'baja' => ['primera_respuesta_horas' => 24, 'solucion_horas' => 120],
+    ];
+
     public function __construct(
         private readonly SoporteRepository $repository,
         private readonly TicketValidator $validator,
@@ -39,6 +47,12 @@ final class SoporteService
         return $this->repository->globalQueue();
     }
 
+    /** @return array<string, array{primera_respuesta_horas: int, solucion_horas: int}> */
+    public function slaPolicy(): array
+    {
+        return self::SLA_POLICY;
+    }
+
     /** @return array<string, mixed> */
     public function find(int $firmaId, int $id, bool $firmaScope = false): array
     {
@@ -56,7 +70,7 @@ final class SoporteService
         if (!$this->validator->validateTicket($normalized)) {
             throw new HttpException(422, 'Revise el ticket de soporte.', $this->validator->errors());
         }
-        $this->limits->requireCapacity($firmaId, 'tickets_soporte');
+        $this->limits->requireCapacity($firmaId, 'tickets_soporte', $request);
 
         return $this->database->transaction(function () use ($firmaId, $normalized, $request): int {
             $id = $this->repository->create([
@@ -71,6 +85,7 @@ final class SoporteService
             $this->audit->record('TICKET_SOPORTE_CREADO', 'soporte', 'ticket', $id, [
                 'prioridad' => $normalized['prioridad'],
                 'categoria' => $normalized['categoria'],
+                'sla' => self::SLA_POLICY[$normalized['prioridad']] ?? self::SLA_POLICY['media'],
             ], $request, $firmaId);
 
             return $id;

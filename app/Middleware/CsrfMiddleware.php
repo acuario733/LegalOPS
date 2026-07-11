@@ -17,11 +17,14 @@ final class CsrfMiddleware implements MiddlewareInterface
 
     public function handle(Request $request, callable $next): Response
     {
+        if (str_starts_with($request->uri(), '/webhooks/') || str_starts_with($request->uri(), '/api/v1/')) {
+            return $next($request);
+        }
+
         if (!$request->isSafeMethod() && !$this->csrf->validate($this->csrf->tokenFromRequest($request))) {
-            throw new HttpException(419, 'La sesión del formulario expiró. Recargue la página e intente nuevamente.');
+            throw new HttpException(419, 'La sesion del formulario expiro. Recargue la pagina e intente nuevamente.');
         }
 
         return $next($request);
     }
 }
-

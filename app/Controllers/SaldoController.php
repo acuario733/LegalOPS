@@ -24,6 +24,7 @@ final class SaldoController extends Controller
             'title' => 'Saldos',
             'saldos' => $this->container->get(SaldoService::class)->listByCliente($firmaId, max(1, (int) $request->query('page', 1))),
             'resumen' => $this->container->get(SaldoService::class)->resumen($firmaId, $clienteId, $casoId),
+            'formula' => $this->container->get(SaldoService::class)->formula(),
             'clientes' => $this->container->get(ClienteService::class)->list($firmaId, [], 1, 100)['items'],
             'casos' => $this->container->get(CasoService::class)->list($firmaId, [], 1, 100)['items'],
             'filters' => (array) $request->query(),
@@ -41,6 +42,7 @@ final class SaldoController extends Controller
         return $this->json([
             'saldos' => $this->container->get(SaldoService::class)->listByCliente($firmaId, max(1, (int) $request->query('page', 1))),
             'resumen' => $this->container->get(SaldoService::class)->resumen($firmaId, $clienteId, $casoId),
+            'formula' => $this->container->get(SaldoService::class)->formula(),
         ]);
     }
 

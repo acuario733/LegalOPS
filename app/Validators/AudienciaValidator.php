@@ -19,6 +19,8 @@ final class AudienciaValidator extends Validator
             'hora' => 'required|date:H:i',
             'modalidad' => 'required|enum:presencial,virtual,mixta,telefonica,otra',
             'despacho' => 'max:180',
+            'juez_responsable' => 'max:180',
+            'despacho_contacto' => 'max:255',
             'lugar' => 'max:255',
             'enlace' => 'max:500',
             'estado' => 'required|enum:programada,realizada,cancelada',

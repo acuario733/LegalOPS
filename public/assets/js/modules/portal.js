@@ -8,18 +8,32 @@
     const resource = form.querySelector('[data-resource-id]');
     if (!type || !resource) return;
 
-    const options = Array.from(resource.options);
+    const configs = {
+        caso: { url: '/api/select/casos', parent: true },
+        documento: { url: '/api/select/documentos', parent: true },
+        honorario: { url: '/api/select/honorarios', parent: true },
+        pago: { url: '/api/select/pagos', parent: true },
+        gasto: { url: '/api/select/gastos', parent: true },
+        usuario_cliente: { url: '/api/select/usuarios-externos', parent: false },
+    };
+
     const sync = () => {
-        let firstVisible = null;
-        options.forEach((option) => {
-            const visible = option.dataset.type === type.value;
-            option.hidden = !visible;
-            option.disabled = !visible;
-            if (visible && firstVisible === null) firstVisible = option;
-        });
-        if (!resource.selectedOptions[0] || resource.selectedOptions[0].disabled) {
-            resource.value = firstVisible ? firstVisible.value : '';
+        const config = configs[type.value] || configs.caso;
+        resource.dataset.url = config.url;
+        resource.dataset.emptyLabel = 'Seleccione';
+        if (config.parent) {
+            resource.dataset.parentField = 'cliente_id';
+            resource.dataset.parentParam = 'cliente_id';
+        } else {
+            delete resource.dataset.parentField;
+            delete resource.dataset.parentParam;
         }
+        resource.innerHTML = '<option value="">Seleccione</option>';
+        resource.value = '';
+        const pending = window.LegalOPSSelects?.reload(resource);
+        pending?.catch(() => {
+            resource.disabled = false;
+        });
     };
 
     type.addEventListener('change', sync);

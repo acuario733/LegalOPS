@@ -8,6 +8,7 @@ use App\Core\Controller;
 use App\Core\HttpException;
 use App\Core\Request;
 use App\Core\Response;
+use App\Services\CatalogoLookupService;
 use App\Services\CasoParteService;
 
 final class CasoParteController extends Controller
@@ -21,6 +22,9 @@ final class CasoParteController extends Controller
             'title' => 'Partes procesales',
             'caso' => $service->caseInfo($firmaId, (int) $casoId),
             'partes' => $service->list($firmaId, (int) $casoId),
+            'catalogos' => [
+                'tipo_documento' => $this->container->get(CatalogoLookupService::class)->items($firmaId, 'tipo_documento'),
+            ],
             'canReveal' => $this->permissions->allows('partes.revelar', $this->currentUser()),
             'csrfToken' => $this->csrf->token(),
             'currentUser' => $this->currentUser(),

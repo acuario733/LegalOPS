@@ -26,9 +26,15 @@ final class DocumentoRepository extends BaseRepository
             $params['gasto_id'] = $filters['gasto_id'];
         }
         if (($filters['q'] ?? '') !== '') {
-            $where[] = '(d.titulo_normalizado LIKE :q OR d.tipo_documental LIKE :q_raw)';
+            $textSearch = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql'
+                ? 'MATCH(d.titulo,d.texto_extraido) AGAINST(:q_boolean IN BOOLEAN MODE)'
+                : 'd.texto_extraido LIKE :q_raw';
+            $where[] = '(d.titulo_normalizado LIKE :q OR d.tipo_documental LIKE :q_raw OR ' . $textSearch . ')';
             $params['q'] = '%' . $filters['q'] . '%';
             $params['q_raw'] = '%' . $filters['q_raw'] . '%';
+            if ($this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+                $params['q_boolean'] = $filters['q_boolean'];
+            }
         }
 
         $sqlWhere = ' WHERE ' . implode(' AND ', $where);
@@ -74,6 +80,39 @@ final class DocumentoRepository extends BaseRepository
         return is_array($row) ? $row : null;
     }
 
+    /** @return list<array<string, mixed>> */
+    public function searchForSelect(int $firmaId, string $query, ?int $clienteId = null, int $limit = 20): array
+    {
+        $where = ['d.firma_id=:firma_id', 'd.deleted_at IS NULL'];
+        $params = ['firma_id' => $firmaId];
+        if ($clienteId !== null) {
+            $where[] = 'd.cliente_id=:cliente_id';
+            $params['cliente_id'] = $clienteId;
+        }
+        $normalized = preg_replace('/\s+/', ' ', mb_strtolower(trim($query))) ?? '';
+        $raw = mb_substr(trim($query), 0, 180);
+        if ($normalized !== '' || $raw !== '') {
+            $where[] = '(d.titulo_normalizado LIKE :q OR d.tipo_documental LIKE :raw)';
+            $params['q'] = '%' . mb_substr($normalized, 0, 180) . '%';
+            $params['raw'] = '%' . $raw . '%';
+        }
+        $statement = $this->pdo->prepare(
+            'SELECT d.id,d.cliente_id,d.caso_id,d.titulo,d.tipo_documental,cl.nombre_razon_social AS cliente_nombre
+             FROM documentos d
+             LEFT JOIN clientes cl ON cl.id=d.cliente_id AND cl.firma_id=d.firma_id
+             WHERE ' . implode(' AND ', $where) . '
+             ORDER BY d.updated_at DESC, d.id DESC
+             LIMIT :limit'
+        );
+        foreach ($params as $key => $value) {
+            $statement->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $statement->bindValue(':limit', max(1, min(50, $limit)), PDO::PARAM_INT);
+        $statement->execute();
+
+        return $statement->fetchAll();
+    }
+
     /** @param array<string, mixed> $data */
     public function create(array $data): int
     {
@@ -81,7 +120,7 @@ final class DocumentoRepository extends BaseRepository
             'INSERT INTO documentos
             (firma_id,cliente_id,caso_id,gasto_id,titulo,titulo_normalizado,descripcion,tipo_documental,estado,visible_portal,created_by_usuario_id,created_at,updated_at)
              VALUES
-            (:firma_id,:cliente_id,:caso_id,:gasto_id,:titulo,:titulo_normalizado,:descripcion,:tipo_documental,:estado,:visible_portal,:created_by_usuario_id,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))'
+            (:firma_id,:cliente_id,:caso_id,:gasto_id,:titulo,:titulo_normalizado,:descripcion,:tipo_documental,:estado,:visible_portal,:created_by_usuario_id,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)'
         );
         $statement->execute($data);
 
@@ -105,7 +144,7 @@ final class DocumentoRepository extends BaseRepository
         $statement = $this->pdo->prepare(
             'UPDATE documentos
              SET cliente_id=:cliente_id,caso_id=:caso_id,gasto_id=:gasto_id,titulo=:titulo,titulo_normalizado=:titulo_normalizado,
-                 descripcion=:descripcion,tipo_documental=:tipo_documental,estado=:estado,visible_portal=:visible_portal,updated_at=CURRENT_TIMESTAMP(6)
+                 descripcion=:descripcion,tipo_documental=:tipo_documental,estado=:estado,visible_portal=:visible_portal,updated_at=CURRENT_TIMESTAMP
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
         $statement->execute($payload + ['id' => $id, 'firma_id' => $firmaId]);
@@ -114,7 +153,7 @@ final class DocumentoRepository extends BaseRepository
     public function setCurrentVersion(int $firmaId, int $id, int $versionId): void
     {
         $statement = $this->pdo->prepare(
-            'UPDATE documentos SET current_version_id=:version_id, updated_at=CURRENT_TIMESTAMP(6)
+            'UPDATE documentos SET current_version_id=:version_id, updated_at=CURRENT_TIMESTAMP
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
         $statement->execute(['version_id' => $versionId, 'id' => $id, 'firma_id' => $firmaId]);
@@ -123,7 +162,7 @@ final class DocumentoRepository extends BaseRepository
     public function softDelete(int $firmaId, int $id): void
     {
         $statement = $this->pdo->prepare(
-            'UPDATE documentos SET deleted_at=CURRENT_TIMESTAMP(6), updated_at=CURRENT_TIMESTAMP(6)
+            'UPDATE documentos SET deleted_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
              WHERE id=:id AND firma_id=:firma_id AND deleted_at IS NULL'
         );
         $statement->execute(['id' => $id, 'firma_id' => $firmaId]);

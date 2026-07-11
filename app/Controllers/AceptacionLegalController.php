@@ -48,4 +48,3 @@ final class AceptacionLegalController extends Controller
         return $this->json(null, 'Aceptación registrada correctamente.');
     }
 }
-

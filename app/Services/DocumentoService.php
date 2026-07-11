@@ -28,7 +28,8 @@ final class DocumentoService
         private readonly LimitePlanService $limits,
         private readonly Database $database,
         private readonly AuditoriaService $audit,
-        private readonly Auth $auth
+        private readonly Auth $auth,
+        private readonly ?WebhookService $webhooks = null
     ) {
     }
 
@@ -54,18 +55,21 @@ final class DocumentoService
     /** @param array<string, mixed> $data @param array<string, mixed> $file */
     public function create(int $firmaId, array $data, array $file, Request $request): int
     {
-        $this->limits->requireCapacity($firmaId, 'documentos');
+        $this->limits->requireCapacity($firmaId, 'documentos', $request);
         $normalized = $this->validateRelations($firmaId, $this->normalize($firmaId, $data));
         if (!$this->validator->validateData($normalized)) {
             throw new HttpException(422, 'Revise los datos del documento.', $this->validator->errors());
         }
 
-        return $this->database->transaction(function () use ($firmaId, $normalized, $file, $request): int {
+        $id = $this->database->transaction(function () use ($firmaId, $normalized, $file, $request): int {
             $id = $this->repository->create($this->recordData($normalized));
             $this->versionService->create($firmaId, $id, $file, $request, 'DOCUMENTO_CARGADO');
 
             return $id;
         });
+        $this->webhooks?->dispatch($firmaId, 'document.uploaded', ['id' => $id, 'caso_id' => $normalized['caso_id']]);
+
+        return $id;
     }
 
     /** @param array<string, mixed> $data */
@@ -93,6 +97,93 @@ final class DocumentoService
             'gasto_id' => $document['gasto_id'],
             'version_actual' => $document['version_numero'] ?? null,
         ], $request, $firmaId, 'warning');
+    }
+
+    public function createGeneratedHtml(int $firmaId, int $casoId, string $title, string $html, Request $request): int
+    {
+        $case = $this->casos->findForFirma($firmaId, $casoId) ?? throw new HttpException(422, 'El caso seleccionado no pertenece a la firma.');
+        $normalized = [
+            'firma_id' => $firmaId,
+            'cliente_id' => (int) $case['cliente_id'],
+            'caso_id' => $casoId,
+            'gasto_id' => null,
+            'titulo' => mb_substr(trim($title), 0, 180),
+            'titulo_normalizado' => $this->normalizeText($title, 180),
+            'descripcion' => 'Documento generado desde plantilla.',
+            'tipo_documental' => 'generado',
+            'estado' => 'activo',
+            'visible_portal' => 0,
+            'created_by_usuario_id' => $this->auth->id(),
+        ];
+        if (!$this->validator->validateData($normalized)) {
+            throw new HttpException(422, 'Revise los datos del documento generado.', $this->validator->errors());
+        }
+
+        return $this->database->transaction(function () use ($firmaId, $normalized, $html, $request): int {
+            $documentId = $this->repository->create($this->recordData($normalized));
+            $version = $this->versions->nextNumber($firmaId, $documentId);
+            $storage = $this->generatedHtmlPath($firmaId, $documentId, $version);
+            if (!is_dir(dirname($storage['absolute'])) && !mkdir(dirname($storage['absolute']), 0775, true) && !is_dir(dirname($storage['absolute']))) {
+                throw new \RuntimeException('No fue posible preparar el almacenamiento del documento generado.');
+            }
+            file_put_contents($storage['absolute'], $html);
+            $versionId = $this->versions->create([
+                'firma_id' => $firmaId,
+                'documento_id' => $documentId,
+                'version_numero' => $version,
+                'nombre_original' => $normalized['titulo'] . '.html',
+                'nombre_fisico' => $storage['name'],
+                'extension' => 'html',
+                'mime_declarado' => 'text/html',
+                'mime_detectado' => 'text/html',
+                'size_bytes' => filesize($storage['absolute']) ?: 0,
+                'checksum_sha256' => hash_file('sha256', $storage['absolute']),
+                'storage_path' => $storage['relative'],
+                'uploaded_by_usuario_id' => $this->auth->id(),
+            ]);
+            $this->repository->setCurrentVersion($firmaId, $documentId, $versionId);
+            $this->audit->record('DOCUMENTO_GENERADO_DESDE_PLANTILLA', 'documentos', 'documento', $documentId, [
+                'version_id' => $versionId,
+                'caso_id' => $normalized['caso_id'],
+            ], $request, $firmaId);
+
+            return $documentId;
+        });
+    }
+
+    public function createGeneratedDocx(int $firmaId, int $casoId, string $title, string $contents, Request $request): int
+    {
+        $case = $this->casos->findForFirma($firmaId, $casoId) ?? throw new HttpException(422, 'El caso seleccionado no pertenece a la firma.');
+        $data = [
+            'firma_id' => $firmaId,
+            'cliente_id' => (int) $case['cliente_id'],
+            'caso_id' => $casoId,
+            'gasto_id' => null,
+            'titulo' => mb_substr(trim($title), 0, 180),
+            'titulo_normalizado' => $this->normalizeText($title, 180),
+            'descripcion' => 'Documento DOCX generado desde plantilla.',
+            'tipo_documental' => 'generado',
+            'estado' => 'activo',
+            'visible_portal' => 0,
+            'created_by_usuario_id' => $this->auth->id(),
+        ];
+        $documentId = $this->repository->create($this->recordData($data));
+        try {
+            $this->versionService->createFromContents(
+                $firmaId,
+                $documentId,
+                $data['titulo'] . '.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                $contents,
+                $request,
+                'DOCUMENTO_GENERADO_DESDE_PLANTILLA'
+            );
+        } catch (\Throwable $exception) {
+            $this->repository->softDelete($firmaId, $documentId);
+            throw $exception;
+        }
+
+        return $documentId;
     }
 
     /** @param array<string, mixed> $data @param array<string, mixed>|null $before @return array<string, mixed> */
@@ -167,6 +258,7 @@ final class DocumentoService
         return [
             'q' => $this->normalizeText($q, 180),
             'q_raw' => mb_substr($q, 0, 180),
+            'q_boolean' => implode(' ', array_map(static fn (string $term): string => '+' . $term . '*', preg_split('/\s+/', preg_replace('/[^\pL\pN\s]/u', ' ', $q) ?? '') ?: [])),
             'cliente_id' => $this->nullableInt($filters['cliente_id'] ?? null),
             'caso_id' => $this->nullableInt($filters['caso_id'] ?? null),
             'gasto_id' => $this->nullableInt($filters['gasto_id'] ?? null),
@@ -195,5 +287,15 @@ final class DocumentoService
     private function truthy(mixed $value): bool
     {
         return in_array($value, [1, '1', true, 'true', 'on', 'si', 'yes'], true);
+    }
+
+    /** @return array{name: string, relative: string, absolute: string} */
+    private function generatedHtmlPath(int $firmaId, int $documentId, int $version): array
+    {
+        $name = bin2hex(random_bytes(20)) . '.html';
+        $relative = 'documents/firmas/' . $firmaId . '/' . $documentId . '/version_' . $version . '/' . $name;
+        $absolute = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
+
+        return ['name' => $name, 'relative' => $relative, 'absolute' => $absolute];
     }
 }

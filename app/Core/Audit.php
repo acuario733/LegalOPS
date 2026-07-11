@@ -67,4 +67,3 @@ final class Audit
         return $sanitized;
     }
 }
-

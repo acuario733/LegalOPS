@@ -21,7 +21,10 @@ final class CasoService
         private readonly CasoValidator $validator,
         private readonly LimitePlanService $limits,
         private readonly AuditoriaService $audit,
-        private readonly Auth $auth
+        private readonly Auth $auth,
+        private readonly CatalogoLookupService $catalogs,
+        private readonly CasoEtapaService $etapas,
+        private readonly ?WebhookService $webhooks = null
     ) {
     }
 
@@ -38,25 +41,32 @@ final class CasoService
     /** @return array<string, mixed> */
     public function find(int $firmaId, int $id): array
     {
-        return $this->repository->findForFirma($firmaId, $id) ?? throw new HttpException(404, 'El caso no existe en la firma.');
+        $case = $this->repository->findForFirma($firmaId, $id) ?? throw new HttpException(404, 'El caso no existe en la firma.');
+        $case['etapas'] = $this->etapas->getEtapas($firmaId, $id);
+
+        return $case;
     }
 
     /** @param array<string, mixed> $data */
     public function create(int $firmaId, array $data, Request $request): int
     {
-        $this->limits->requireCapacity($firmaId, 'casos');
+        $this->limits->requireCapacity($firmaId, 'casos', $request);
         $normalized = $this->normalize($firmaId, $data);
         $this->validateRelations($firmaId, $normalized);
         $this->ensureRadicadoAvailable($firmaId, $normalized['radicado']);
         if (!$this->validator->validateData($normalized)) {
             throw new HttpException(422, 'Revise los datos del caso.', $this->validator->errors());
         }
-        $id = $this->repository->create($this->recordData($normalized));
+        $normalized['numero'] = $this->repository->nextCaseNumber($firmaId, (int) date('Y'));
+        $id = $this->repository->create($this->recordData($normalized) + ['numero' => $normalized['numero']]);
+        $this->etapas->crearEtapas($firmaId, $id, $this->etapas->defaultStages($normalized['tipo_proceso']));
         $this->audit->record('CASO_CREADO', 'casos', 'caso', $id, [
+            'numero' => $normalized['numero'],
             'cliente_id' => $normalized['cliente_id'],
             'responsable_usuario_id' => $normalized['responsable_usuario_id'],
             'radicado' => $normalized['radicado'],
         ], $request, $firmaId);
+        $this->webhooks?->dispatch($firmaId, 'matter.created', ['id' => $id, 'numero' => $normalized['numero']]);
 
         return $id;
     }
@@ -76,6 +86,7 @@ final class CasoService
             'anterior' => ['estado' => $before['estado'], 'cliente_id' => $before['cliente_id'], 'responsable_usuario_id' => $before['responsable_usuario_id']],
             'nuevo' => ['estado' => $normalized['estado'], 'cliente_id' => $normalized['cliente_id'], 'responsable_usuario_id' => $normalized['responsable_usuario_id']],
         ], $request, $firmaId);
+        $this->webhooks?->dispatch($firmaId, 'matter.updated', ['id' => $id, 'estado' => $normalized['estado']]);
     }
 
     public function close(int $firmaId, int $id, string $reason, Request $request): void
@@ -87,6 +98,7 @@ final class CasoService
         }
         $this->repository->close($firmaId, $id, (int) $this->auth->id(), mb_substr($data['motivo'], 0, 500));
         $this->audit->record('CASO_CERRADO', 'casos', 'caso', $id, ['estado_anterior' => $case['estado']], $request, $firmaId, 'warning');
+        $this->webhooks?->dispatch($firmaId, 'matter.closed', ['id' => $id, 'motivo' => mb_substr($reason, 0, 500)]);
     }
 
     public function archive(int $firmaId, int $id, string $reason, Request $request): void
@@ -98,6 +110,23 @@ final class CasoService
         }
         $this->repository->archive($firmaId, $id, (int) $this->auth->id(), mb_substr($data['motivo'], 0, 500));
         $this->audit->record('CASO_ARCHIVADO', 'casos', 'caso', $id, ['estado_anterior' => $case['estado']], $request, $firmaId, 'warning');
+    }
+
+    public function reopen(int $firmaId, int $id, string $reason, Request $request): void
+    {
+        $case = $this->find($firmaId, $id);
+        if (!in_array($case['estado'] ?? '', ['cerrado', 'archivado'], true)) {
+            throw new HttpException(409, 'Solo se pueden reabrir casos cerrados o archivados.');
+        }
+        $data = ['motivo' => trim($reason)];
+        if (!$this->validator->validateClose($data)) {
+            throw new HttpException(422, 'Indique un motivo valido.', $this->validator->errors());
+        }
+        $this->repository->reopen($firmaId, $id);
+        $this->audit->record('CASO_REABIERTO', 'casos', 'caso', $id, [
+            'estado_anterior' => $case['estado'],
+            'motivo' => mb_substr($data['motivo'], 0, 500),
+        ], $request, $firmaId, 'warning');
     }
 
     /** @param array<string, mixed> $data @param array<string, mixed>|null $before @return array<string, mixed> */
@@ -114,9 +143,9 @@ final class CasoService
             'descripcion' => $this->nullableString($data['descripcion'] ?? ($before['descripcion'] ?? null), 2000),
             'estado' => (string) ($data['estado'] ?? ($before['estado'] ?? 'activo')),
             'prioridad' => (string) ($data['prioridad'] ?? ($before['prioridad'] ?? 'media')),
-            'tipo_proceso' => $this->nullableString($data['tipo_proceso'] ?? ($before['tipo_proceso'] ?? null), 120),
-            'jurisdiccion' => $this->nullableString($data['jurisdiccion'] ?? ($before['jurisdiccion'] ?? null), 120),
-            'despacho' => $this->nullableString($data['despacho'] ?? ($before['despacho'] ?? null), 180),
+            'tipo_proceso' => $this->catalogs->normalizeOptional($firmaId, 'tipo_caso', $data['tipo_proceso'] ?? ($before['tipo_proceso'] ?? null), 'Tipo de caso'),
+            'jurisdiccion' => $this->catalogs->normalizeOptional($firmaId, 'jurisdiccion', $data['jurisdiccion'] ?? ($before['jurisdiccion'] ?? null), 'Jurisdiccion'),
+            'despacho' => $this->catalogs->normalizeOptional($firmaId, 'despacho', $data['despacho'] ?? ($before['despacho'] ?? null), 'Despacho'),
             'radicado' => $this->nullableString($data['radicado'] ?? ($before['radicado'] ?? null), 120),
             'fecha_apertura' => $this->nullableString($data['fecha_apertura'] ?? ($before['fecha_apertura'] ?? date('Y-m-d')), 10),
         ];

@@ -9,6 +9,7 @@ use App\Core\HttpException;
 use App\Core\Request;
 use App\Core\Response;
 use App\Services\AudienciaService;
+use App\Services\CatalogoLookupService;
 use App\Services\CasoService;
 use App\Services\UsuarioService;
 
@@ -23,6 +24,9 @@ final class AudienciaController extends Controller
             'audiencias' => $this->container->get(AudienciaService::class)->list($firmaId, (array) $request->query(), max(1, (int) $request->query('page', 1))),
             'casos' => $this->container->get(CasoService::class)->list($firmaId, [], 1, 100)['items'],
             'usuarios' => $this->container->get(UsuarioService::class)->all($firmaId),
+            'catalogos' => [
+                'despacho' => $this->container->get(CatalogoLookupService::class)->items($firmaId, 'despacho'),
+            ],
             'filters' => (array) $request->query(),
             'csrfToken' => $this->csrf->token(),
             'currentUser' => $this->currentUser(),
@@ -38,6 +42,9 @@ final class AudienciaController extends Controller
             'audiencia' => $this->container->get(AudienciaService::class)->find($firmaId, (int) $id),
             'casos' => $this->container->get(CasoService::class)->list($firmaId, [], 1, 100)['items'],
             'usuarios' => $this->container->get(UsuarioService::class)->all($firmaId),
+            'catalogos' => [
+                'despacho' => $this->container->get(CatalogoLookupService::class)->items($firmaId, 'despacho'),
+            ],
             'csrfToken' => $this->csrf->token(),
             'currentUser' => $this->currentUser(),
         ]);

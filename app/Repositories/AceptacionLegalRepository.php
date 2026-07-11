@@ -32,4 +32,3 @@ final class AceptacionLegalRepository extends BaseRepository
         return (int) $this->pdo->lastInsertId();
     }
 }
-

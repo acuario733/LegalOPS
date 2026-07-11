@@ -24,6 +24,7 @@ final class SaldoService
         $result = $this->repository->paginateClientes($firmaId, max(1, $page), min(100, max(1, $perPage)));
         $result['page'] = max(1, $page);
         $result['per_page'] = min(100, max(1, $perPage));
+        $result['formula'] = $this->repository->formula();
 
         return $result;
     }
@@ -43,5 +44,31 @@ final class SaldoService
         }
 
         return $this->repository->resumen($firmaId, $clienteId, $casoId);
+    }
+
+    /** @return array<string, mixed> */
+    public function resumenCliente(int $firmaId, int $clienteId): array
+    {
+        if ($this->clientes->findForFirma($firmaId, $clienteId) === null) {
+            throw new HttpException(422, 'El cliente seleccionado no pertenece a la firma.');
+        }
+
+        return $this->repository->resumenCliente($firmaId, $clienteId);
+    }
+
+    /** @return array<string, mixed> */
+    public function resumenCaso(int $firmaId, int $casoId): array
+    {
+        $case = $this->casos->findForFirma($firmaId, $casoId) ?? throw new HttpException(422, 'El caso seleccionado no pertenece a la firma.');
+        $result = $this->repository->resumenCaso($firmaId, $casoId);
+        $result['cliente_id'] = (int) $case['cliente_id'];
+
+        return $result;
+    }
+
+    /** @return array{honorarios: list<string>, pagos: list<string>, gastos: list<string>, expresion: string} */
+    public function formula(): array
+    {
+        return $this->repository->formula();
     }
 }

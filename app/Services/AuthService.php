@@ -26,7 +26,8 @@ final class AuthService
         private readonly SessionService $sessionService,
         private readonly LocalMailService $mail,
         private readonly Database $database,
-        private readonly AuditoriaService $audit
+        private readonly AuditoriaService $audit,
+        private readonly CommercialStatusService $commercialStatus
     ) {
     }
 
@@ -52,7 +53,8 @@ final class AuthService
             && is_string($user['password_hash'])
             && password_verify($credentials['password'], $user['password_hash'])
             && $user['estado'] === 'activo'
-            && ($user['firma_id'] === null || $user['firma_estado'] === 'activa');
+            && ($user['firma_id'] !== null || $user['tipo'] === 'superadmin')
+            && ($user['firma_id'] === null || $this->commercialStatus->allowsLogin($user['firma_estado']));
 
         $firmaId = is_array($user) && $user['firma_id'] !== null ? (int) $user['firma_id'] : null;
         $this->attempts->record($firmaId, $emailHash, $request->ip(), $valid);
@@ -94,23 +96,39 @@ final class AuthService
     public function requestPasswordReset(string $email, ?string $firmaSlug, Request $request): void
     {
         $email = strtolower(trim($email));
+        $emailHash = hash('sha256', filter_var($email, FILTER_VALIDATE_EMAIL) === false ? 'ip:' . $request->ip() : $email);
+        if ($this->attempts->countRecentFailures($emailHash, $request->ip()) >= 5) {
+            throw new HttpException(429, 'Demasiados intentos. Espere antes de volver a intentarlo.');
+        }
         $candidates = filter_var($email, FILTER_VALIDATE_EMAIL) ? $this->users->findLoginCandidates($email, $firmaSlug) : [];
         if (count($candidates) !== 1) {
+            $this->attempts->record(null, $emailHash, $request->ip(), false);
             return;
         }
         $user = $candidates[0];
+        $firmaId = $user['firma_id'] === null ? null : (int) $user['firma_id'];
+        if (($user['estado'] ?? null) !== 'activo' || ($firmaId !== null && !$this->commercialStatus->allowsLogin($user['firma_estado'] ?? null))) {
+            $this->attempts->record($firmaId, $emailHash, $request->ip(), false);
+            return;
+        }
         $token = bin2hex(random_bytes(32));
-        $this->resets->create((int) $user['id'], $user['firma_id'] === null ? null : (int) $user['firma_id'], hash('sha256', $token), $request->ip(), $request->userAgent());
+        $this->resets->create((int) $user['id'], $firmaId, hash('sha256', $token), $request->ip(), $request->userAgent());
         $this->mail->sendPasswordReset((string) $user['email'], $token);
-        $this->audit->record('PASSWORD_RESET_SOLICITADO', 'auth', 'usuario', (int) $user['id'], [], $request, $user['firma_id'] === null ? null : (int) $user['firma_id']);
+        $this->audit->record('PASSWORD_RESET_SOLICITADO', 'auth', 'usuario', (int) $user['id'], [], $request, $firmaId);
     }
 
     public function resetPassword(string $token, string $password, Request $request): void
     {
+        $resetRateHash = hash('sha256', 'ip:' . $request->ip());
         if (strlen($password) < 12) {
+            $this->attempts->record(null, $resetRateHash, $request->ip(), false);
             throw new HttpException(422, 'La nueva contraseña debe tener al menos 12 caracteres.');
         }
-        $reset = $this->resets->findValid(hash('sha256', $token)) ?? throw new HttpException(422, 'El enlace de recuperación no es válido o expiró.');
+        $reset = $this->resets->findValid(hash('sha256', $token));
+        if ($reset === null || ($reset['estado'] ?? null) !== 'activo') {
+            $this->attempts->record($reset === null ? null : ($reset['firma_id'] === null ? null : (int) $reset['firma_id']), $resetRateHash, $request->ip(), false);
+            throw new HttpException(422, 'El enlace de recuperación no es válido o expiró.');
+        }
         $this->database->transaction(function () use ($reset, $password, $request): void {
             $this->users->updatePassword((int) $reset['usuario_id'], password_hash($password, PASSWORD_DEFAULT));
             $this->resets->markUsed((int) $reset['id']);
@@ -119,4 +137,3 @@ final class AuthService
         });
     }
 }
-

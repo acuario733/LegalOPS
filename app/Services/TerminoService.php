@@ -62,7 +62,7 @@ final class TerminoService
     /** @param array<string, mixed> $data */
     public function create(int $firmaId, array $data, Request $request): int
     {
-        $this->limits->requireCapacity($firmaId, 'terminos');
+        $this->limits->requireCapacity($firmaId, 'terminos', $request);
         $normalized = $this->validateRelations($firmaId, $this->normalize($firmaId, $data));
         if (!$this->validator->validateData($normalized)) {
             throw new HttpException(422, 'Revise los datos del termino.', $this->validator->errors());

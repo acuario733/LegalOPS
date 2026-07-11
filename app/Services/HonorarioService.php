@@ -21,7 +21,13 @@ final class HonorarioService
         private readonly HonorarioValidator $validator,
         private readonly LimitePlanService $limits,
         private readonly AuditoriaService $audit,
-        private readonly Auth $auth
+        private readonly Auth $auth,
+        private readonly CatalogoLookupService $catalogs,
+        private readonly HonorarioLineaService $lineas,
+        private readonly BillingService $billing,
+        private readonly DashboardService $dashboard,
+        // @phpstan-ignore property.onlyWritten
+        private readonly ?WebhookService $webhooks = null
     ) {
     }
 
@@ -38,16 +44,28 @@ final class HonorarioService
     /** @return array<string, mixed> */
     public function find(int $firmaId, int $id): array
     {
-        return $this->repository->findForFirma($firmaId, $id) ?? throw new HttpException(404, 'El honorario no existe en la firma.');
+        $honorario = $this->repository->findForFirma($firmaId, $id) ?? throw new HttpException(404, 'El honorario no existe en la firma.');
+        $honorario['lineas'] = $this->lineas->listar($firmaId, $id);
+
+        return $honorario;
     }
 
     /** @param array<string, mixed> $data */
     public function create(int $firmaId, array $data, Request $request): int
     {
-        $this->limits->requireCapacity($firmaId, 'honorarios');
+        $this->limits->requireCapacity($firmaId, 'honorarios', $request);
         $normalized = $this->validateRelations($firmaId, $this->normalize($firmaId, $data));
+        if ($normalized['estado'] !== 'cancelado') {
+            $normalized['estado'] = 'pendiente';
+        }
         $this->validate($normalized);
         $id = $this->repository->create($this->recordData($normalized));
+        $dueDate = $this->dateValue($data['fecha_vencimiento'] ?? date('Y-m-d', strtotime('+30 days')));
+        $this->repository->initializeBilling($firmaId, $id, $dueDate);
+        $this->lineas->reemplazarLineas($firmaId, $id, $this->invoiceLines($data, $normalized));
+        $this->billing->generatePaymentToken($firmaId, $id);
+        $this->billing->queuePdf($firmaId, $id);
+        $this->dashboard->invalidateKpis($firmaId);
         $this->audit->record('HONORARIO_CREADO', 'finanzas', 'honorario', $id, [
             'cliente_id' => $normalized['cliente_id'],
             'caso_id' => $normalized['caso_id'],
@@ -63,12 +81,46 @@ final class HonorarioService
     {
         $before = $this->find($firmaId, $id);
         $normalized = $this->validateRelations($firmaId, $this->normalize($firmaId, $data, $before));
+        if ($before['estado'] !== 'cancelado' && $normalized['estado'] === 'cancelado') {
+            throw new HttpException(422, 'Use el flujo de cancelacion trazable para cancelar honorarios.');
+        }
+        $paid = $this->repository->totalPaid($firmaId, $id);
+        if ((float) $normalized['monto'] < $paid && $normalized['estado'] !== 'cancelado') {
+            throw new HttpException(422, 'El monto del honorario no puede ser menor al valor ya pagado.');
+        }
+        if ($normalized['estado'] !== 'cancelado') {
+            $normalized['estado'] = $this->statusForPayments((float) $normalized['monto'], $paid);
+        }
         $this->validate($normalized);
         $this->repository->update($firmaId, $id, $this->recordData($normalized));
+        $this->dashboard->invalidateKpis($firmaId);
+        if (array_key_exists('lineas', $data) && is_array($data['lineas'])) {
+            $this->lineas->reemplazarLineas($firmaId, $id, $this->invoiceLines($data, $normalized));
+        }
         $this->audit->record('HONORARIO_MODIFICADO', 'finanzas', 'honorario', $id, [
             'anterior' => ['monto' => $before['monto'], 'estado' => $before['estado']],
             'nuevo' => ['monto' => $normalized['monto'], 'estado' => $normalized['estado']],
         ], $request, $firmaId);
+    }
+
+    /** @param array<string, mixed> $data */
+    public function cancel(int $firmaId, int $id, array $data, Request $request): void
+    {
+        $before = $this->find($firmaId, $id);
+        if ($before['estado'] === 'cancelado') {
+            throw new HttpException(409, 'El honorario ya esta cancelado.');
+        }
+        $reason = $this->requiredReason($data['motivo'] ?? null);
+
+        $this->repository->updateStatus($firmaId, $id, 'cancelado');
+        $this->audit->record('HONORARIO_CANCELADO', 'finanzas', 'honorario', $id, [
+            'cliente_id' => $before['cliente_id'],
+            'caso_id' => $before['caso_id'],
+            'estado_anterior' => $before['estado'],
+            'monto' => $before['monto'],
+            'moneda' => $before['moneda'],
+            'motivo' => $reason,
+        ], $request, $firmaId, 'warning');
     }
 
     /** @param array<string, mixed> $data */
@@ -85,7 +137,7 @@ final class HonorarioService
     /** @param array<string, mixed> $data @param array<string, mixed>|null $before @return array<string, mixed> */
     private function normalize(int $firmaId, array $data, ?array $before = null): array
     {
-        $concept = trim((string) ($data['concepto'] ?? ($before['concepto'] ?? '')));
+        $concept = $this->catalogs->normalizeRequired($firmaId, 'concepto_honorario', $data['concepto'] ?? ($before['concepto'] ?? ''), 'Concepto de honorario');
 
         return [
             'firma_id' => $firmaId,
@@ -95,7 +147,7 @@ final class HonorarioService
             'concepto_normalizado' => $this->normalizeText($concept, 180),
             'descripcion' => $this->nullableString($data['descripcion'] ?? ($before['descripcion'] ?? null), 2000),
             'monto' => $this->money($data['monto'] ?? ($before['monto'] ?? 0)),
-            'moneda' => strtoupper(mb_substr(trim((string) ($data['moneda'] ?? ($before['moneda'] ?? 'COP'))), 0, 3)),
+            'moneda' => $this->catalogs->normalizeRequired($firmaId, 'moneda', $data['moneda'] ?? ($before['moneda'] ?? 'COP'), 'Moneda'),
             'fecha_acuerdo' => $this->dateValue($data['fecha_acuerdo'] ?? ($before['fecha_acuerdo'] ?? date('Y-m-d'))),
             'estado' => (string) ($data['estado'] ?? ($before['estado'] ?? 'pendiente')),
             'created_by_usuario_id' => $before['created_by_usuario_id'] ?? $this->auth->id(),
@@ -143,7 +195,7 @@ final class HonorarioService
             'q' => $this->normalizeText((string) ($filters['q'] ?? ''), 180),
             'cliente_id' => $this->nullableInt($filters['cliente_id'] ?? null),
             'caso_id' => $this->nullableInt($filters['caso_id'] ?? null),
-            'estado' => in_array(($filters['estado'] ?? ''), ['pendiente', 'parcial', 'pagado', 'cancelado'], true) ? $filters['estado'] : '',
+            'estado' => in_array(($filters['estado'] ?? ''), ['pendiente', 'parcial', 'pagado', 'cancelado', 'anulado'], true) ? $filters['estado'] : '',
         ];
     }
 
@@ -181,5 +233,40 @@ final class HonorarioService
         $value = trim((string) ($value ?? ''));
 
         return $value === '' ? date('Y-m-d') : mb_substr($value, 0, 10);
+    }
+
+    private function requiredReason(mixed $value): string
+    {
+        $reason = trim((string) ($value ?? ''));
+        if (mb_strlen($reason) < 5) {
+            throw new HttpException(422, 'El motivo debe tener al menos 5 caracteres.');
+        }
+
+        return mb_substr($reason, 0, 500);
+    }
+
+    private function statusForPayments(float $amount, float $paid): string
+    {
+        if ($paid <= 0.0) {
+            return 'pendiente';
+        }
+
+        return $paid + 0.00001 >= $amount ? 'pagado' : 'parcial';
+    }
+
+    /** @param array<string, mixed> $data @param array<string, mixed> $normalized @return list<array<string, mixed>> */
+    private function invoiceLines(array $data, array $normalized): array
+    {
+        if (isset($data['lineas']) && is_array($data['lineas']) && $data['lineas'] !== []) {
+            return array_values($data['lineas']);
+        }
+
+        return [[
+            'descripcion' => $normalized['concepto'],
+            'cantidad' => 1,
+            'tarifa' => $normalized['monto'],
+            'tipo' => 'honorario_manual',
+            'referencia_id' => null,
+        ]];
     }
 }

@@ -1,0 +1,279 @@
+/* ════════════════════════════════════════════════════════════════════
+   LegalOPS Cloud V2 — Sidebar
+   Override de AdminLTE .app-sidebar hacia el diseño navy del render.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── SIDEBAR BASE ─────────────────────────────────────────────────── */
+.app-sidebar {
+  background:     var(--color-navy) !important;
+  width:          var(--sidebar-width) !important;
+  transition:     width 0.25s ease !important;
+  display:        flex !important;
+  flex-direction: column !important;
+  border-right:   none !important;
+  overflow:       visible !important;   /* era hidden: bloqueaba scroll del wrapper */
+  height:         100vh !important;
+}
+
+/* Collapsed state: usa la variable de AdminLTE 4 para evitar doble offset en CSS Grid */
+.sidebar-collapsed .app-sidebar,
+.layout-fixed.sidebar-mini .app-sidebar {
+  width: var(--sidebar-width-collapsed) !important;
+}
+
+/* ── LOGO / BRAND ─────────────────────────────────────────────────── */
+.sidebar-brand,
+.app-sidebar .sidebar-brand {
+  padding:       20px 16px !important;
+  display:       flex !important;
+  align-items:   center !important;
+  gap:           10px !important;
+  border-bottom: 1px solid var(--color-navy-muted) !important;
+  background:    transparent !important;
+  text-decoration: none !important;
+  flex-shrink:   0 !important;
+}
+.sidebar-brand .brand-link,
+.sidebar-brand a {
+  display:        flex !important;
+  align-items:    center !important;
+  gap:            10px !important;
+  text-decoration:none !important;
+  padding:        0 !important;
+}
+
+.legalops-brand-mark {
+  width:          32px;
+  height:         32px;
+  border-radius:  var(--radius-sm);
+  background:     var(--color-green);
+  color:          #fff;
+  display:        flex;
+  align-items:    center;
+  justify-content:center;
+  font-size:      16px;
+  font-weight:    700;
+  flex-shrink:    0;
+  font-family:    var(--font-base);
+}
+
+.brand-text,
+.sidebar-brand .brand-text {
+  font-size:   14px !important;
+  font-weight: 700 !important;
+  color:       #fff !important;
+  white-space: nowrap !important;
+  line-height: 1.2 !important;
+}
+
+.brand-badge-superadmin {
+  font-size:    9px;
+  font-weight:  700;
+  color:        var(--color-danger);
+  background:   rgba(220,38,38,0.2);
+  border-radius:3px;
+  padding:      1px 5px;
+  display:      inline-block;
+  margin-top:   2px;
+}
+.brand-badge-v2 {
+  font-size:    9px;
+  font-weight:  700;
+  color:        var(--color-green);
+  background:   rgba(26,107,69,0.25);
+  border-radius:3px;
+  padding:      1px 5px;
+  display:      inline-block;
+}
+
+/* ── NAV WRAPPER — flex:1 toma el espacio restante y permite scroll ── */
+.sidebar-wrapper,
+.app-sidebar .sidebar-wrapper {
+  flex:       1 1 auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding:    var(--space-3) 0 !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--color-navy-muted) transparent !important;
+  min-height: 0 !important;  /* necesario para que flex-child sea scrollable */
+}
+.sidebar-wrapper::-webkit-scrollbar       { width: 4px; }
+.sidebar-wrapper::-webkit-scrollbar-track { background: transparent; }
+.sidebar-wrapper::-webkit-scrollbar-thumb { background: var(--color-navy-muted); border-radius: 2px; }
+
+/* ── SECTION LABELS ───────────────────────────────────────────────── */
+.nav-header,
+.sidebar-menu .nav-header {
+  font-size:      10px !important;
+  font-weight:    700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  color:          var(--color-navy-muted) !important;
+  padding:        16px 16px 6px !important;
+  background:     transparent !important;
+}
+
+/* ── NAV ITEMS ────────────────────────────────────────────────────── */
+.sidebar-menu .nav-item {
+  margin:     1px 8px !important;
+  list-style: none !important;
+}
+
+.sidebar-menu .nav-link {
+  display:       flex !important;
+  align-items:   center !important;
+  gap:           10px !important;
+  padding:       10px 16px !important;
+  border-radius: var(--radius-sm) !important;
+  color:         rgba(255,255,255,0.70) !important;
+  text-decoration: none !important;
+  font-size:     var(--font-size-sm) !important;
+  font-weight:   500 !important;
+  white-space:   nowrap !important;
+  transition:    background 0.15s, color 0.15s !important;
+  background:    transparent !important;
+  border:        none !important;
+}
+.sidebar-menu .nav-link:hover {
+  background: var(--color-navy-light) !important;
+  color:      #fff !important;
+}
+.sidebar-menu .nav-link.active {
+  background: var(--color-green) !important;
+  color:      #fff !important;
+}
+
+.sidebar-menu .nav-icon,
+.sidebar-menu .nav-link .bi {
+  font-size:  16px !important;
+  flex-shrink:0 !important;
+  opacity:    0.85 !important;
+  width:      18px !important;
+  text-align: center !important;
+}
+.sidebar-menu .nav-link.active .nav-icon,
+.sidebar-menu .nav-link.active .bi { opacity: 1 !important; }
+
+.sidebar-menu .nav-link p {
+  margin:        0 !important;
+  font-size:     inherit !important;
+  color:         inherit !important;
+  overflow:      hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* ── FOOTER DEL SIDEBAR ───────────────────────────────────────────── */
+.app-sidebar .sidebar-footer {
+  padding:    var(--space-3) var(--space-2) !important;
+  border-top: 1px solid var(--color-navy-muted) !important;
+  flex-shrink:0 !important;
+}
+
+.sidebar-user-block {
+  display:       flex;
+  align-items:   center;
+  gap:           10px;
+  padding:       10px;
+  border-radius: var(--radius-sm);
+  cursor:        pointer;
+  transition:    background 0.15s;
+}
+.sidebar-user-block:hover { background: var(--color-navy-light); }
+
+.sidebar-avatar {
+  width:          34px;
+  height:         34px;
+  border-radius:  var(--radius-full);
+  background:     var(--color-green);
+  color:          #fff;
+  display:        flex;
+  align-items:    center;
+  justify-content:center;
+  font-size:      13px;
+  font-weight:    700;
+  flex-shrink:    0;
+  font-family:    var(--font-base);
+}
+.sidebar-user-name {
+  font-size:     13px;
+  font-weight:   600;
+  color:         #fff;
+  white-space:   nowrap;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-user-role {
+  font-size:     11px;
+  color:         rgba(255,255,255,0.50);
+  white-space:   nowrap;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-collapse-btn {
+  width:       100%;
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+  padding:     10px 16px;
+  background:  none;
+  border:      none;
+  color:       rgba(255,255,255,0.50);
+  font-size:   13px;
+  font-family: var(--font-base);
+  cursor:      pointer;
+  transition:  color 0.15s;
+  margin-top:  var(--space-1);
+}
+.sidebar-collapse-btn:hover { color: #fff; }
+.sidebar-collapse-btn .bi   { font-size: 15px; }
+
+/* ── COLLAPSED STATE ──────────────────────────────────────────────── */
+.sidebar-collapsed .brand-text,
+.sidebar-collapsed .brand-badge-v2,
+.sidebar-collapsed .brand-badge-superadmin,
+.sidebar-collapsed .nav-header,
+.sidebar-collapsed .sidebar-menu .nav-link p,
+.sidebar-collapsed .sidebar-user-name,
+.sidebar-collapsed .sidebar-user-role,
+.sidebar-collapsed .sidebar-collapse-btn span {
+  display: none !important;
+}
+.sidebar-collapsed .sidebar-menu .nav-link {
+  justify-content: center !important;
+  padding: 10px !important;
+}
+.sidebar-collapsed .sidebar-user-block { justify-content: center !important; }
+.sidebar-collapsed .sidebar-collapse-btn { justify-content: center !important; padding: 10px !important; }
+
+/* ── MAIN CONTENT OFFSET ──────────────────────────────────────────── */
+/*
+ * AdminLTE 4 usa CSS Grid (grid-area) para posicionar .app-main-wrapper.
+ * NO usar margin-left aquí: se sumaría al offset del grid y produciría doble sangría.
+ * El ancho del sidebar lo controla .app-sidebar width + AdminLTE --lte-sidebar-width.
+ */
+
+/* ── MOBILE (<992px) ──────────────────────────────────────────────── */
+@media (max-width: 991.98px) {
+  .app-sidebar {
+    left:      calc(-1 * var(--sidebar-width-mobile)) !important;
+    width:     var(--sidebar-width-mobile) !important;
+    position:  fixed !important;
+    top:       0 !important;
+    height:    100vh !important;
+    z-index:   1050 !important;
+    box-shadow:2px 0 16px rgba(0,0,0,0.25) !important;
+    transition:left 0.3s ease, width 0.3s ease !important;
+  }
+  .app-sidebar.sidebar-mobile-open {
+    left: 0 !important;
+  }
+  .sidebar-overlay {
+    display:    none;
+    position:   fixed;
+    inset:      0;
+    background: rgba(0,0,0,0.5);
+    z-index:    1049;
+  }
+  .sidebar-overlay.show { display: block; }
+}

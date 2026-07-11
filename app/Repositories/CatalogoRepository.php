@@ -33,6 +33,24 @@ final class CatalogoRepository extends BaseRepository
         )->fetchAll();
     }
 
+    /** @return list<array<string, mixed>> */
+    public function activeItemsByCode(int $firmaId, string $code): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT ci.id,ci.codigo,ci.etiqueta,ci.orden,ci.firma_id,c.codigo AS catalogo_codigo,c.alcance
+             FROM catalogo_items ci
+             INNER JOIN catalogos c ON c.id=ci.catalogo_id
+             WHERE c.codigo=:codigo
+               AND (c.firma_id=:firma_id OR c.firma_id IS NULL)
+               AND c.estado=\'activo\' AND ci.estado=\'activo\'
+               AND c.deleted_at IS NULL AND ci.deleted_at IS NULL
+             ORDER BY CASE WHEN c.firma_id IS NULL THEN 0 ELSE 1 END, ci.orden, ci.etiqueta'
+        );
+        $statement->execute(['codigo' => $code, 'firma_id' => $firmaId]);
+
+        return $statement->fetchAll();
+    }
+
     /** @return array<string, mixed>|null */
     public function findVisible(int $firmaId, int $id): ?array
     {

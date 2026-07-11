@@ -6,6 +6,26 @@ namespace App\Repositories;
 
 final class DashboardRepository extends BaseRepository
 {
+    /** @return array<string, float> */
+    public function financeKpis(int $firmaId): array
+    {
+        $query = static function (\PDO $pdo, string $sql, int $firmaId): float {
+            $statement = $pdo->prepare($sql);
+            $statement->execute(['firma_id' => $firmaId]);
+            return (float) $statement->fetchColumn();
+        };
+        $collected = $query($this->pdo, 'SELECT COALESCE(SUM(monto),0) FROM pagos WHERE firma_id=:firma_id AND estado=\'registrado\' AND fecha_pago>=DATE_FORMAT(CURRENT_DATE,\'%Y-%m-01\') AND deleted_at IS NULL', $firmaId);
+        $billed = $query($this->pdo, 'SELECT COALESCE(SUM(monto),0) FROM honorarios WHERE firma_id=:firma_id AND fecha_acuerdo>=DATE_FORMAT(CURRENT_DATE,\'%Y-%m-01\') AND estado NOT IN (\'cancelado\',\'anulado\') AND deleted_at IS NULL', $firmaId);
+
+        return [
+            'ingresos_cobrados_mes' => $collected,
+            'pendiente_cobro' => $query($this->pdo, 'SELECT COALESCE(SUM(monto),0) FROM honorarios WHERE firma_id=:firma_id AND estado IN (\'pendiente\',\'parcial\') AND deleted_at IS NULL', $firmaId),
+            'horas_facturables_mes' => $query($this->pdo, 'SELECT COALESCE(SUM(duracion_minutos),0)/60 FROM time_entries WHERE firma_id=:firma_id AND es_facturable=1 AND fecha>=DATE_FORMAT(CURRENT_DATE,\'%Y-%m-01\') AND deleted_at IS NULL', $firmaId),
+            'tasa_cobro' => $billed > 0 ? round(($collected / $billed) * 100, 2) : 0.0,
+            'saldo_trust_total' => $query($this->pdo, 'SELECT COALESCE(SUM(saldo),0) FROM trust_accounts WHERE firma_id=:firma_id AND deleted_at IS NULL', $firmaId),
+        ];
+    }
+
     public function countActiveClients(int $firmaId): int
     {
         return $this->count('SELECT COUNT(*) FROM clientes WHERE firma_id=:firma_id AND estado=\'activo\' AND deleted_at IS NULL', $firmaId);
@@ -46,29 +66,11 @@ final class DashboardRepository extends BaseRepository
         return $statement->fetchAll();
     }
 
-    /** @return array<string, float> */
-    public function financeSummary(int $firmaId): array
-    {
-        return [
-            'honorarios' => $this->sum('honorarios', $firmaId, 'estado<>\'cancelado\''),
-            'pagos' => $this->sum('pagos', $firmaId, 'estado=\'registrado\''),
-            'gastos' => $this->sum('gastos', $firmaId, 'estado=\'registrado\''),
-        ];
-    }
-
     private function count(string $sql, int $firmaId): int
     {
         $statement = $this->pdo->prepare($sql);
         $statement->execute(['firma_id' => $firmaId]);
 
         return (int) $statement->fetchColumn();
-    }
-
-    private function sum(string $table, int $firmaId, string $condition): float
-    {
-        $statement = $this->pdo->prepare('SELECT COALESCE(SUM(monto),0) FROM ' . $table . ' WHERE firma_id=:firma_id AND deleted_at IS NULL AND ' . $condition);
-        $statement->execute(['firma_id' => $firmaId]);
-
-        return (float) $statement->fetchColumn();
     }
 }

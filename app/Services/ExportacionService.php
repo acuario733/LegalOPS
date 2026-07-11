@@ -28,7 +28,7 @@ final class ExportacionService
         if (!$this->reportService->canExport($user, $type)) {
             throw new HttpException(403, 'No tiene permiso para exportar este reporte.');
         }
-        $this->limits->requireCapacity($firmaId, 'exportaciones');
+        $this->limits->requireCapacity($firmaId, 'exportaciones', $request);
         $maxRows = 2000;
         $filters = $this->filters($request);
         $data = $this->reports->data($firmaId, $type, $maxRows + 1, $filters);
@@ -101,14 +101,14 @@ final class ExportacionService
     /** @return array<string, string|int> */
     private function filters(Request $request): array
     {
-        $allowed = ['cliente_id', 'estado', 'desde', 'hasta', 'modulo', 'accion'];
+        $allowed = ['cliente_id', 'caso_id', 'estado', 'desde', 'hasta', 'modulo', 'accion', 'tipo_caso', 'moneda', 'tipo_finanza', 'monto_min', 'monto_max'];
         $filters = [];
         foreach ($allowed as $key) {
             $value = $request->query($key);
             if (is_array($value) || $value === null || $value === '') {
                 continue;
             }
-            if ($key === 'cliente_id') {
+            if (in_array($key, ['cliente_id', 'caso_id'], true)) {
                 if (filter_var($value, FILTER_VALIDATE_INT) !== false) {
                     $filters[$key] = (int) $value;
                 }

@@ -6,6 +6,9 @@ namespace App\Repositories;
 
 final class RolRepository extends BaseRepository
 {
+    private const ASSIGNABLE_PERMISSION_FILTER = 'modulo NOT IN (\'firmas\',\'planes\',\'limites\',\'checklist\')
+               AND codigo NOT IN (\'legal.administrar\',\'soporte.ver_global\')';
+
     /** @return list<array<string, mixed>> */
     public function allForFirma(int $firmaId): array
     {
@@ -18,6 +21,30 @@ final class RolRepository extends BaseRepository
         $statement->execute(['firma_id' => $firmaId]);
 
         return $statement->fetchAll();
+    }
+
+    /** All roles across all firms — superadmin-only view. @return list<array<string, mixed>> */
+    public function allGlobal(): array
+    {
+        return $this->pdo->query(
+            'SELECT r.id, r.firma_id, r.codigo, r.nombre, r.descripcion, r.estado, r.is_protected,
+                    f.nombre AS firma_nombre,
+                    COUNT(DISTINCT ur.usuario_id) AS usuarios
+             FROM roles r
+             LEFT JOIN firmas f ON f.id = r.firma_id
+             LEFT JOIN usuario_roles ur ON ur.rol_id = r.id AND ur.firma_id = r.firma_id
+             WHERE r.deleted_at IS NULL
+             GROUP BY r.id, r.firma_id, r.codigo, r.nombre, r.descripcion, r.estado, r.is_protected, f.nombre
+             ORDER BY f.nombre, r.nombre'
+        )->fetchAll();
+    }
+
+    /** All permissions without the assignable filter — for superadmin view. @return list<array<string, mixed>> */
+    public function allPermissions(): array
+    {
+        return $this->pdo->query(
+            'SELECT id, codigo, modulo, accion, descripcion FROM permisos ORDER BY modulo, accion'
+        )->fetchAll();
     }
 
     /** @return array<string, mixed>|null */
@@ -65,7 +92,31 @@ final class RolRepository extends BaseRepository
     /** @return list<array<string, mixed>> */
     public function permissions(): array
     {
-        return $this->pdo->query('SELECT id,codigo,modulo,accion,descripcion FROM permisos ORDER BY modulo,accion')->fetchAll();
+        return $this->pdo->query(
+            'SELECT id,codigo,modulo,accion,descripcion
+             FROM permisos
+             WHERE ' . self::ASSIGNABLE_PERMISSION_FILTER . '
+             ORDER BY modulo,accion'
+        )->fetchAll();
+    }
+
+    /** @param list<int> $permissionIds @return list<int> */
+    public function assignablePermissionIds(array $permissionIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $permissionIds), static fn (int $id): bool => $id > 0)));
+        if ($ids === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $statement = $this->pdo->prepare(
+            'SELECT id
+             FROM permisos
+             WHERE id IN (' . $placeholders . ')
+               AND ' . self::ASSIGNABLE_PERMISSION_FILTER
+        );
+        $statement->execute($ids);
+
+        return array_map('intval', $statement->fetchAll(\PDO::FETCH_COLUMN));
     }
 
     /** @return list<int> */
@@ -80,29 +131,35 @@ final class RolRepository extends BaseRepository
     /** @param list<int> $permissionIds */
     public function syncPermissions(int $firmaId, int $roleId, array $permissionIds): void
     {
+        // Nota (Sesion 7, 2026-07-11): timestamp calculado en PHP en vez de
+        // CURRENT_TIMESTAMP(6) para que sea compatible con SQLite en pruebas
+        // unitarias, siguiendo la convencion ya documentada en la sesion GDPR
+        // (docs/IMPLEMENTACION_FASES.md, seccion C2). Mismo valor efectivo en MySQL.
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $delete = $this->pdo->prepare('DELETE FROM rol_permiso WHERE firma_id=:firma_id AND rol_id=:rol_id');
         $delete->execute(['firma_id' => $firmaId, 'rol_id' => $roleId]);
         $insert = $this->pdo->prepare(
             'INSERT INTO rol_permiso (firma_id,rol_id,permiso_id,created_at)
-             SELECT :firma_id,:rol_id,p.id,CURRENT_TIMESTAMP(6) FROM permisos p WHERE p.id=:permiso_id'
+             SELECT :firma_id,:rol_id,p.id,:created_at FROM permisos p WHERE p.id=:permiso_id'
         );
         foreach (array_unique($permissionIds) as $permissionId) {
-            $insert->execute(['firma_id' => $firmaId, 'rol_id' => $roleId, 'permiso_id' => $permissionId]);
+            $insert->execute(['firma_id' => $firmaId, 'rol_id' => $roleId, 'created_at' => $now, 'permiso_id' => $permissionId]);
         }
     }
 
     /** @param list<int> $roleIds */
     public function syncUserRoles(int $firmaId, int $userId, array $roleIds): void
     {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s.u');
         $delete = $this->pdo->prepare('DELETE FROM usuario_roles WHERE firma_id=:firma_id AND usuario_id=:usuario_id');
         $delete->execute(['firma_id' => $firmaId, 'usuario_id' => $userId]);
         $insert = $this->pdo->prepare(
             'INSERT INTO usuario_roles (firma_id,usuario_id,rol_id,created_at)
-             SELECT :firma_id,:usuario_id,r.id,CURRENT_TIMESTAMP(6) FROM roles r
+             SELECT :firma_id,:usuario_id,r.id,:created_at FROM roles r
              WHERE r.id=:rol_id AND r.firma_id=:firma_check AND r.estado=\'activo\' AND r.deleted_at IS NULL'
         );
         foreach (array_unique($roleIds) as $roleId) {
-            $insert->execute(['firma_id' => $firmaId, 'usuario_id' => $userId, 'rol_id' => $roleId, 'firma_check' => $firmaId]);
+            $insert->execute(['firma_id' => $firmaId, 'usuario_id' => $userId, 'created_at' => $now, 'rol_id' => $roleId, 'firma_check' => $firmaId]);
         }
     }
 }

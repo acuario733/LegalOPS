@@ -56,7 +56,7 @@ final class TareaService
     /** @param array<string, mixed> $data */
     public function create(int $firmaId, array $data, Request $request): int
     {
-        $this->limits->requireCapacity($firmaId, 'tareas');
+        $this->limits->requireCapacity($firmaId, 'tareas', $request);
         $normalized = $this->validateRelations($firmaId, $this->normalize($data, null, true));
         if (!$this->validator->validateData($normalized)) {
             throw new HttpException(422, 'Revise los datos de la tarea.', $this->validator->errors());
@@ -175,6 +175,7 @@ final class TareaService
     /** @param array<string, mixed> $data @return array<string, mixed> */
     private function validateRelations(int $firmaId, array $data, ?int $taskId = null): array
     {
+        $this->validateDueDate($firmaId, $data['fecha_vencimiento']);
         $caseId = $data['caso_id'];
         if ($data['termino_id'] !== null) {
             $term = $this->terminos->findForFirma($firmaId, (int) $data['termino_id']) ?? throw new HttpException(422, 'El termino seleccionado no pertenece a la firma.');
@@ -197,6 +198,18 @@ final class TareaService
         }
 
         return $data;
+    }
+
+    private function validateDueDate(int $firmaId, ?string $date): void
+    {
+        if ($date === null || $date === '') {
+            return;
+        }
+        $today = new DateTimeImmutable('today', $this->timezone($firmaId));
+        $due = DateTimeImmutable::createFromFormat('!Y-m-d', $date, $this->timezone($firmaId));
+        if ($due !== false && $due < $today) {
+            throw new HttpException(422, 'La fecha de vencimiento no puede ser anterior a la fecha actual.');
+        }
     }
 
     private function syncTerm(int $firmaId, int $taskId, ?int $oldTermId, ?int $newTermId): void

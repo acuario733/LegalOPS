@@ -44,10 +44,18 @@ final class Auth
         $this->session->put(self::SESSION_KEY, $user);
     }
 
+    /** @param array<string, mixed> $attributes */
+    public function update(array $attributes): void
+    {
+        $user = $this->user();
+        if ($user === null) {
+            return;
+        }
+        $this->session->put(self::SESSION_KEY, array_replace($user, $attributes));
+    }
+
     public function logout(): void
     {
-        $this->session->remove(self::SESSION_KEY);
-        $this->session->regenerate(true);
+        $this->session->destroy();
     }
 }
-
